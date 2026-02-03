@@ -1,0 +1,47 @@
+# Environment variables - CRITICAL: Never commit these!
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# API Keys and Secrets
+google-services.json
+GoogleService-Info.plist
+
+# Dependencies
+node_modules/
+.expo/
+.expo-shared/
+npm-debug.*
+yarn-debug.*
+yarn-error.*
+*.log
+
+# Build outputs
+dist/
+build/
+android/app/build/
+ios/Pods/
+*.apk
+*.aab
+*.ipa
+
+# OS files
+.DS_Store
+*.swp
+*.swo
+*~
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.sublime-*
+
+# EAS
+eas-build-pre-install.sh
+
+# Temporary files
+*.tmp
+.cache/
