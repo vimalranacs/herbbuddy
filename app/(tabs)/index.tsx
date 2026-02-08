@@ -1,8 +1,62 @@
 import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  RefreshControl,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
+import { supabase } from "../../lib/supabase";
+
+interface Event {
+  id: string;
+  title: string;
+  location: string;
+  time: string;
+  description: string;
+  max_attendees: number;
+}
 
 export default function HomeScreen() {
+  const [events, setEvents] = useState<Event[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  useEffect(() => {
+    fetchEvents();
+  }, []);
+
+  const fetchEvents = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("events")
+        .select("*")
+        .order("created_at", { ascending: false })
+        .limit(5);
+
+      if (error) {
+        console.error("Error fetching events:", error);
+        return;
+      }
+
+      setEvents(data || []);
+    } catch (error) {
+      console.error("Error:", error);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchEvents();
+  };
+
   return (
     <View style={styles.root}>
       {/* Header */}
@@ -26,17 +80,47 @@ export default function HomeScreen() {
         </Pressable>
       </View>
 
-      {/* Events / People */}
-      <ScrollView contentContainerStyle={styles.cardsContainer}>
-        {["Evening Walk", "Herb Session", "Cafe Meetup"].map((item, index) => (
-          <View key={index} style={styles.card}>
-            <Text style={styles.cardTitle}>{item}</Text>
-            <Text style={styles.cardSubtitle}>2–3 people nearby</Text>
-            <Pressable style={styles.cardButton}>
-              <Text style={styles.cardButtonText}>Join</Text>
-            </Pressable>
+      {/* Events */}
+      <ScrollView
+        contentContainerStyle={styles.cardsContainer}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            colors={["#2f855a"]}
+            tintColor="#2f855a"
+          />
+        }
+      >
+        <Text style={styles.sectionTitle}>Recent Events</Text>
+
+        {loading ? (
+          <View style={styles.loadingContainer}>
+            <ActivityIndicator size="large" color="#2f855a" />
           </View>
-        ))}
+        ) : events.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Ionicons name="leaf-outline" size={48} color="#cbd5e0" />
+            <Text style={styles.emptyText}>No events yet</Text>
+            <Text style={styles.emptySubtext}>Be the first to create one!</Text>
+          </View>
+        ) : (
+          events.map((event) => (
+            <View key={event.id} style={styles.card}>
+              <Text style={styles.cardTitle}>{event.title}</Text>
+              <Text style={styles.cardSubtitle}>📍 {event.location}</Text>
+              <Text style={styles.cardTime}>🕐 {event.time}</Text>
+              <Pressable
+                style={styles.cardButton}
+                onPress={() =>
+                  router.push(`/join-plan?eventId=${event.id}&title=${encodeURIComponent(event.title)}`)
+                }
+              >
+                <Text style={styles.cardButtonText}>View Details</Text>
+              </Pressable>
+            </View>
+          ))
+        )}
       </ScrollView>
 
       {/* Floating Add Button */}
@@ -73,15 +157,26 @@ const styles = StyleSheet.create({
   },
   bannerButtonText: { color: "#fff", fontWeight: "600" },
   cardsContainer: { paddingHorizontal: 16, paddingBottom: 100 },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#1a202c",
+    marginBottom: 12,
+  },
   card: {
     backgroundColor: "#fff",
     borderRadius: 16,
     padding: 16,
     marginBottom: 12,
     elevation: 2,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.08,
+    shadowRadius: 8,
   },
   cardTitle: { fontSize: 18, fontWeight: "600", color: "#1a202c" },
-  cardSubtitle: { fontSize: 13, color: "#718096", marginVertical: 4 },
+  cardSubtitle: { fontSize: 13, color: "#718096", marginTop: 4 },
+  cardTime: { fontSize: 13, color: "#718096", marginTop: 2 },
   cardButton: {
     marginTop: 10,
     backgroundColor: "#edfdf6",
@@ -106,5 +201,24 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.4,
     shadowRadius: 8,
     elevation: 8,
+  },
+  loadingContainer: {
+    paddingVertical: 40,
+    alignItems: "center",
+  },
+  emptyContainer: {
+    paddingVertical: 40,
+    alignItems: "center",
+  },
+  emptyText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#1a202c",
+    marginTop: 12,
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: "#718096",
+    marginTop: 4,
   },
 });

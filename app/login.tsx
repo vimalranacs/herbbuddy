@@ -3,6 +3,8 @@ import { router } from "expo-router";
 import { useState } from "react";
 import {
     Alert,
+    KeyboardAvoidingView,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -27,112 +29,176 @@ export default function LoginScreen() {
 
         setLoading(true);
         try {
+            console.log("🔄 Attempting login with email:", email.trim());
+
             const { data, error } = await supabase.auth.signInWithPassword({
                 email: email.trim(),
                 password: password,
             });
 
             if (error) {
+                console.error("❌ Login error:", error);
                 Alert.alert("Login Failed", error.message);
                 return;
             }
 
             if (data.user) {
-                // Login successful, navigate to tabs
-                router.replace("/(tabs)");
+                console.log("✅ Login successful for:", data.user.email);
+
+                // Check if user has completed their profile (including new fields)
+                const { data: profile, error: profileError } = await supabase
+                    .from("profiles")
+                    .select("id, full_name, interests, vibe")
+                    .eq("id", data.user.id)
+                    .single();
+
+                console.log("📋 Profile check:", {
+                    hasProfile: !!profile,
+                    fullName: profile?.full_name,
+                    interests: profile?.interests?.length || 0,
+                    profileError: profileError?.message
+                });
+
+                // Profile is complete only if it has full_name AND interests (from new flow)
+                const isProfileComplete = profile &&
+                    profile.full_name &&
+                    profile.interests &&
+                    profile.interests.length > 0;
+
+                if (!isProfileComplete) {
+                    // No profile or incomplete profile - redirect to profile setup
+                    console.log("🆕 Incomplete profile - redirecting to profile setup");
+                    router.replace("/profile-setup");
+                } else {
+                    // Profile exists and is complete - go to main app
+                    console.log("👤 Complete profile - redirecting to main app");
+                    router.replace("/(tabs)");
+                }
             }
         } catch (error) {
+            console.error("💥 Unexpected login error:", error);
             Alert.alert("Error", "An unexpected error occurred");
-            console.error(error);
         } finally {
             setLoading(false);
         }
     };
 
+    const handleForgotPassword = async () => {
+        if (!email.trim()) {
+            Alert.alert("Enter Email", "Please enter your email address first");
+            return;
+        }
+
+        try {
+            const { error } = await supabase.auth.resetPasswordForEmail(email.trim());
+
+            if (error) {
+                Alert.alert("Error", error.message);
+                return;
+            }
+
+            Alert.alert(
+                "Check Your Email",
+                "We've sent a password reset link to your email."
+            );
+        } catch (error) {
+            Alert.alert("Error", "Failed to send reset email");
+        }
+    };
+
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                {/* Header */}
-                <View style={styles.header}>
-                    <Text style={styles.logo}>🌿</Text>
-                    <Text style={styles.title}>Welcome Back</Text>
-                    <Text style={styles.subtitle}>Login to find your herb buddies</Text>
-                </View>
-
-                {/* Form */}
-                <View style={styles.form}>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Email</Text>
-                        <View style={styles.inputContainer}>
-                            <Ionicons name="mail-outline" size={20} color="#718096" />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="your@email.com"
-                                placeholderTextColor="#a0aec0"
-                                value={email}
-                                onChangeText={setEmail}
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
-                        </View>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+            >
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    {/* Header */}
+                    <View style={styles.header}>
+                        <Text style={styles.logo}>🌿</Text>
+                        <Text style={styles.title}>Welcome Back</Text>
+                        <Text style={styles.subtitle}>Login to find your herb buddies</Text>
                     </View>
 
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Password</Text>
-                        <View style={styles.inputContainer}>
-                            <Ionicons name="lock-closed-outline" size={20} color="#718096" />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="Enter your password"
-                                placeholderTextColor="#a0aec0"
-                                value={password}
-                                onChangeText={setPassword}
-                                secureTextEntry={!showPassword}
-                                autoCapitalize="none"
-                            />
-                            <Pressable onPress={() => setShowPassword(!showPassword)}>
-                                <Ionicons
-                                    name={showPassword ? "eye-outline" : "eye-off-outline"}
-                                    size={20}
-                                    color="#718096"
+                    {/* Form */}
+                    <View style={styles.form}>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Email</Text>
+                            <View style={styles.inputContainer}>
+                                <Ionicons name="mail-outline" size={20} color="#718096" />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="your@email.com"
+                                    placeholderTextColor="#a0aec0"
+                                    value={email}
+                                    onChangeText={setEmail}
+                                    keyboardType="email-address"
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
                                 />
+                            </View>
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Password</Text>
+                            <View style={styles.inputContainer}>
+                                <Ionicons name="lock-closed-outline" size={20} color="#718096" />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="Enter your password"
+                                    placeholderTextColor="#a0aec0"
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    secureTextEntry={!showPassword}
+                                    autoCapitalize="none"
+                                />
+                                <Pressable onPress={() => setShowPassword(!showPassword)}>
+                                    <Ionicons
+                                        name={showPassword ? "eye-outline" : "eye-off-outline"}
+                                        size={20}
+                                        color="#718096"
+                                    />
+                                </Pressable>
+                            </View>
+                        </View>
+
+                        <Pressable style={styles.forgotPassword} onPress={handleForgotPassword}>
+                            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+                        </Pressable>
+
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.loginButton,
+                                pressed && styles.loginButtonPressed,
+                                loading && styles.loginButtonDisabled,
+                            ]}
+                            onPress={handleLogin}
+                            disabled={loading}
+                        >
+                            <Text style={styles.loginButtonText}>
+                                {loading ? "Logging in..." : "Login"}
+                            </Text>
+                        </Pressable>
+
+                        <View style={styles.divider}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>or</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        <View style={styles.signupPrompt}>
+                            <Text style={styles.signupText}>Don't have an account? </Text>
+                            <Pressable onPress={() => router.push("/signup")}>
+                                <Text style={styles.signupLink}>Sign Up</Text>
                             </Pressable>
                         </View>
                     </View>
-
-                    <Pressable style={styles.forgotPassword}>
-                        <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-                    </Pressable>
-
-                    <Pressable
-                        style={({ pressed }) => [
-                            styles.loginButton,
-                            pressed && styles.loginButtonPressed,
-                            loading && styles.loginButtonDisabled,
-                        ]}
-                        onPress={handleLogin}
-                        disabled={loading}
-                    >
-                        <Text style={styles.loginButtonText}>
-                            {loading ? "Logging in..." : "Login"}
-                        </Text>
-                    </Pressable>
-
-                    <View style={styles.divider}>
-                        <View style={styles.dividerLine} />
-                        <Text style={styles.dividerText}>or</Text>
-                        <View style={styles.dividerLine} />
-                    </View>
-
-                    <View style={styles.signupPrompt}>
-                        <Text style={styles.signupText}>Don't have an account? </Text>
-                        <Pressable onPress={() => router.push("/signup")}>
-                            <Text style={styles.signupLink}>Sign Up</Text>
-                        </Pressable>
-                    </View>
-                </View>
-            </ScrollView>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }

@@ -1,31 +1,128 @@
 import { Ionicons } from "@expo/vector-icons";
+import DateTimePicker, { DateTimePickerEvent } from "@react-native-community/datetimepicker";
+import * as ImagePicker from "expo-image-picker";
 import { router } from "expo-router";
 import { useState } from "react";
 import {
+  ActivityIndicator,
   Alert,
+  Image,
+  KeyboardAvoidingView,
+  Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
   TextInput,
-  View,
+  View
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { uploadImageToCloudinary } from "../lib/cloudinary";
+import { Coordinates, getCurrentLocation } from "../lib/location";
 import { supabase } from "../lib/supabase";
 
 export default function AddEventScreen() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [location, setLocation] = useState("");
-  const [time, setTime] = useState("");
+  const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
+
+  // Enhanced date/time handling
+  const [eventDate, setEventDate] = useState<Date>(new Date());
+  const [eventTime, setEventTime] = useState<Date>(new Date());
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [showTimePicker, setShowTimePicker] = useState(false);
+
+  // Cover image
+  const [coverImage, setCoverImage] = useState<string | null>(null);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
   const [maxAttendees, setMaxAttendees] = useState("");
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [gettingLocation, setGettingLocation] = useState(false);
 
-  const maxDescriptionLength = 200;
+  const maxDescriptionLength = 500;
+
+  // Format date for display
+  const formatDate = (date: Date): string => {
+    return date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+  };
+
+  // Format time for display
+  const formatTime = (date: Date): string => {
+    return date.toLocaleTimeString('en-US', {
+      hour: 'numeric',
+      minute: '2-digit',
+      hour12: true
+    });
+  };
+
+  // Handle date change
+  const onDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    setShowDatePicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setEventDate(selectedDate);
+    }
+  };
+
+  // Handle time change
+  const onTimeChange = (event: DateTimePickerEvent, selectedTime?: Date) => {
+    setShowTimePicker(Platform.OS === 'ios');
+    if (selectedTime) {
+      setEventTime(selectedTime);
+    }
+  };
+
+  // Pick cover image
+  const pickCoverImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [16, 9],
+        quality: 0.8,
+      });
+
+      if (!result.canceled && result.assets[0]) {
+        setUploadingImage(true);
+        const imageUri = result.assets[0].uri;
+
+        try {
+          // Upload to Cloudinary
+          const cloudinaryResult = await uploadImageToCloudinary(imageUri, 'events');
+          if (cloudinaryResult?.secure_url) {
+            setCoverImage(cloudinaryResult.secure_url);
+          } else {
+            // If cloudinary fails, use local URI for preview
+            setCoverImage(imageUri);
+          }
+        } catch (uploadError) {
+          console.error("Cloudinary upload error:", uploadError);
+          // Fallback to local URI
+          setCoverImage(imageUri);
+        }
+        setUploadingImage(false);
+      }
+    } catch (error) {
+      console.error("Error picking image:", error);
+      setUploadingImage(false);
+      Alert.alert("Error", "Failed to select image");
+    }
+  };
+
+  // Remove cover image
+  const removeCoverImage = () => {
+    setCoverImage(null);
+  };
 
   const handleSubmit = async () => {
-    if (!title.trim() || !location.trim() || !time.trim()) {
+    if (!title.trim() || !location.trim()) {
       Alert.alert("Error", "Please fill in all required fields");
       return;
     }
@@ -40,6 +137,10 @@ export default function AddEventScreen() {
         return;
       }
 
+      // Combine date and time
+      const combinedDateTime = new Date(eventDate);
+      combinedDateTime.setHours(eventTime.getHours(), eventTime.getMinutes(), 0, 0);
+
       const { data, error } = await supabase
         .from("events")
         .insert([
@@ -47,9 +148,13 @@ export default function AddEventScreen() {
             title: title.trim(),
             description: description.trim(),
             location: location.trim(),
-            time: time.trim(),
+            time: formatDate(eventDate) + " at " + formatTime(eventTime), // Legacy field
+            event_date: combinedDateTime.toISOString(),
+            cover_image_url: coverImage,
             host_id: user.id,
             max_attendees: maxAttendees ? parseInt(maxAttendees) : 10,
+            latitude: coordinates?.latitude || null,
+            longitude: coordinates?.longitude || null,
           },
         ])
         .select();
@@ -72,128 +177,288 @@ export default function AddEventScreen() {
 
   return (
     <SafeAreaView style={styles.safeArea}>
-      <ScrollView contentContainerStyle={styles.container}>
-        {/* Header with Gradient Background */}
-        <View style={styles.headerGradient}>
-          <Text style={styles.title}>Create an Event 🌿</Text>
-          <Text style={styles.subtitle}>
-            Post what you want to do and find a buddy
-          </Text>
-        </View>
-
-        <View style={styles.formContainer}>
-          {/* Event Title */}
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <Ionicons name="sparkles" size={16} color="#2f855a" />
-              <Text style={styles.label}>Event Title</Text>
-            </View>
-            <TextInput
-              placeholder="Evening Walk, Herb Session, Chill Talk"
-              placeholderTextColor="#a0aec0"
-              style={[
-                styles.input,
-                focusedField === "title" && styles.inputFocused,
-              ]}
-              value={title}
-              onChangeText={setTitle}
-              onFocus={() => setFocusedField("title")}
-              onBlur={() => setFocusedField(null)}
-            />
-          </View>
-
-          {/* Description */}
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <Ionicons name="document-text" size={16} color="#2f855a" />
-              <Text style={styles.label}>Description</Text>
-              <Text style={styles.charCount}>
-                {description.length}/{maxDescriptionLength}
-              </Text>
-            </View>
-            <TextInput
-              placeholder="What are you looking for? What's the vibe?"
-              placeholderTextColor="#a0aec0"
-              style={[
-                styles.input,
-                styles.textArea,
-                focusedField === "description" && styles.inputFocused,
-              ]}
-              value={description}
-              onChangeText={(text) => {
-                if (text.length <= maxDescriptionLength) {
-                  setDescription(text);
-                }
-              }}
-              onFocus={() => setFocusedField("description")}
-              onBlur={() => setFocusedField(null)}
-              multiline
-              maxLength={maxDescriptionLength}
-            />
-          </View>
-
-          {/* Location */}
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <Ionicons name="location" size={16} color="#2f855a" />
-              <Text style={styles.label}>Location</Text>
-            </View>
-            <TextInput
-              placeholder="Nearby area or landmark"
-              placeholderTextColor="#a0aec0"
-              style={[
-                styles.input,
-                focusedField === "location" && styles.inputFocused,
-              ]}
-              value={location}
-              onChangeText={setLocation}
-              onFocus={() => setFocusedField("location")}
-              onBlur={() => setFocusedField(null)}
-            />
-          </View>
-
-          {/* When */}
-          <View style={styles.inputGroup}>
-            <View style={styles.labelRow}>
-              <Ionicons name="time" size={16} color="#2f855a" />
-              <Text style={styles.label}>When?</Text>
-            </View>
-            <TextInput
-              placeholder="Today / Tonight / Weekend"
-              placeholderTextColor="#a0aec0"
-              style={[
-                styles.input,
-                focusedField === "time" && styles.inputFocused,
-              ]}
-              value={time}
-              onChangeText={setTime}
-              onFocus={() => setFocusedField("time")}
-              onBlur={() => setFocusedField(null)}
-            />
-          </View>
-
-          {/* Submit Button */}
-          <Pressable
-            style={({ pressed }) => [
-              styles.submitButton,
-              pressed && styles.submitButtonPressed,
-              loading && styles.submitButtonDisabled,
-            ]}
-            onPress={handleSubmit}
-            disabled={loading}
-          >
-            <Ionicons name="checkmark-circle" size={24} color="#fff" />
-            <Text style={styles.submitButtonText}>
-              {loading ? "Creating..." : "Create Event"}
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+      >
+        <ScrollView
+          contentContainerStyle={styles.container}
+          keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
+        >
+          {/* Header with Gradient Background */}
+          <View style={styles.headerGradient}>
+            <Pressable onPress={() => router.back()} style={styles.backButton}>
+              <Ionicons name="arrow-back" size={24} color="#fff" />
+            </Pressable>
+            <Text style={styles.title}>Create an Event 🌿</Text>
+            <Text style={styles.subtitle}>
+              Post what you want to do and find a buddy
             </Text>
-          </Pressable>
+          </View>
 
-          {/* Cancel */}
-          <Pressable onPress={() => router.back()}>
-            <Text style={styles.cancel}>Cancel</Text>
-          </Pressable>
-        </View>
-      </ScrollView>
+          <View style={styles.formContainer}>
+            {/* Cover Image Section */}
+            <View style={styles.sectionHeader}>
+              <Ionicons name="image" size={18} color="#2f855a" />
+              <Text style={styles.sectionTitle}>Cover Image</Text>
+              <Text style={styles.optionalTag}>Optional</Text>
+            </View>
+
+            {coverImage ? (
+              <View style={styles.coverImageContainer}>
+                <Image source={{ uri: coverImage }} style={styles.coverImage} />
+                <Pressable style={styles.removeImageButton} onPress={removeCoverImage}>
+                  <Ionicons name="close-circle" size={28} color="#fff" />
+                </Pressable>
+              </View>
+            ) : (
+              <Pressable
+                style={styles.coverImagePlaceholder}
+                onPress={pickCoverImage}
+                disabled={uploadingImage}
+              >
+                {uploadingImage ? (
+                  <ActivityIndicator size="large" color="#2f855a" />
+                ) : (
+                  <>
+                    <Ionicons name="camera" size={40} color="#a0aec0" />
+                    <Text style={styles.coverImageText}>Add a cover photo</Text>
+                    <Text style={styles.coverImageSubtext}>Tap to upload (16:9 recommended)</Text>
+                  </>
+                )}
+              </Pressable>
+            )}
+
+            <View style={styles.divider} />
+
+            {/* Event Title */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Ionicons name="sparkles" size={16} color="#2f855a" />
+                <Text style={styles.label}>Event Title *</Text>
+              </View>
+              <TextInput
+                placeholder="Evening Walk, Herb Session, Chill Talk"
+                placeholderTextColor="#a0aec0"
+                style={[
+                  styles.input,
+                  focusedField === "title" && styles.inputFocused,
+                ]}
+                value={title}
+                onChangeText={setTitle}
+                onFocus={() => setFocusedField("title")}
+                onBlur={() => setFocusedField(null)}
+              />
+            </View>
+
+            {/* Description */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Ionicons name="document-text" size={16} color="#2f855a" />
+                <Text style={styles.label}>Description</Text>
+                <Text style={styles.charCount}>
+                  {description.length}/{maxDescriptionLength}
+                </Text>
+              </View>
+              <TextInput
+                placeholder="What are you looking for? What's the vibe? Tell people what to expect..."
+                placeholderTextColor="#a0aec0"
+                style={[
+                  styles.input,
+                  styles.textArea,
+                  focusedField === "description" && styles.inputFocused,
+                ]}
+                value={description}
+                onChangeText={(text) => {
+                  if (text.length <= maxDescriptionLength) {
+                    setDescription(text);
+                  }
+                }}
+                onFocus={() => setFocusedField("description")}
+                onBlur={() => setFocusedField(null)}
+                multiline
+                maxLength={maxDescriptionLength}
+              />
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Date & Time Section */}
+            <View style={styles.sectionHeader}>
+              <Ionicons name="calendar" size={18} color="#2f855a" />
+              <Text style={styles.sectionTitle}>When is it happening?</Text>
+            </View>
+
+            {/* Date Picker */}
+            <View style={styles.dateTimeRow}>
+              <Pressable
+                style={styles.dateTimeCard}
+                onPress={() => setShowDatePicker(true)}
+              >
+                <View style={styles.dateTimeIcon}>
+                  <Ionicons name="calendar-outline" size={24} color="#2f855a" />
+                </View>
+                <View style={styles.dateTimeContent}>
+                  <Text style={styles.dateTimeLabel}>Date</Text>
+                  <Text style={styles.dateTimeValue}>{formatDate(eventDate)}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#a0aec0" />
+              </Pressable>
+            </View>
+
+            {/* Time Picker */}
+            <View style={styles.dateTimeRow}>
+              <Pressable
+                style={styles.dateTimeCard}
+                onPress={() => setShowTimePicker(true)}
+              >
+                <View style={styles.dateTimeIcon}>
+                  <Ionicons name="time-outline" size={24} color="#2f855a" />
+                </View>
+                <View style={styles.dateTimeContent}>
+                  <Text style={styles.dateTimeLabel}>Time</Text>
+                  <Text style={styles.dateTimeValue}>{formatTime(eventTime)}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#a0aec0" />
+              </Pressable>
+            </View>
+
+            {/* Date/Time Picker Modals */}
+            {showDatePicker && (
+              <DateTimePicker
+                value={eventDate}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={onDateChange}
+                minimumDate={new Date()}
+              />
+            )}
+
+            {showTimePicker && (
+              <DateTimePicker
+                value={eventTime}
+                mode="time"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={onTimeChange}
+              />
+            )}
+
+            <View style={styles.divider} />
+
+            {/* Location */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Ionicons name="location" size={16} color="#2f855a" />
+                <Text style={styles.label}>Location *</Text>
+                {coordinates && (
+                  <View style={styles.gpsBadge}>
+                    <Ionicons name="checkmark-circle" size={12} color="#2f855a" />
+                    <Text style={styles.gpsBadgeText}>GPS</Text>
+                  </View>
+                )}
+              </View>
+              <TextInput
+                placeholder="Nearby area or landmark"
+                placeholderTextColor="#a0aec0"
+                style={[
+                  styles.input,
+                  focusedField === "location" && styles.inputFocused,
+                ]}
+                value={location}
+                onChangeText={setLocation}
+                onFocus={() => setFocusedField("location")}
+                onBlur={() => setFocusedField(null)}
+              />
+              <Pressable
+                style={({ pressed }) => [
+                  styles.gpsButton,
+                  pressed && styles.gpsButtonPressed,
+                  gettingLocation && styles.gpsButtonDisabled,
+                ]}
+                onPress={async () => {
+                  setGettingLocation(true);
+                  const result = await getCurrentLocation();
+                  setGettingLocation(false);
+
+                  if (result.success && result.coordinates) {
+                    setCoordinates(result.coordinates);
+                    Alert.alert(
+                      "📍 Location Captured!",
+                      `GPS coordinates saved. Your event will show up for nearby users.`
+                    );
+                  } else {
+                    Alert.alert("Location Error", result.error || "Failed to get location");
+                  }
+                }}
+                disabled={gettingLocation}
+              >
+                {gettingLocation ? (
+                  <ActivityIndicator size="small" color="#2f855a" />
+                ) : (
+                  <>
+                    <Ionicons name="navigate" size={16} color="#2f855a" />
+                    <Text style={styles.gpsButtonText}>
+                      {coordinates ? "Update Location" : "Use Current Location"}
+                    </Text>
+                  </>
+                )}
+              </Pressable>
+            </View>
+
+            {/* Max Attendees */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Ionicons name="people" size={16} color="#2f855a" />
+                <Text style={styles.label}>Max Attendees</Text>
+              </View>
+              <TextInput
+                placeholder="How many people? (default: 10)"
+                placeholderTextColor="#a0aec0"
+                style={[
+                  styles.input,
+                  focusedField === "maxAttendees" && styles.inputFocused,
+                ]}
+                value={maxAttendees}
+                onChangeText={(text) => {
+                  // Only allow numbers
+                  const numericText = text.replace(/[^0-9]/g, '');
+                  setMaxAttendees(numericText);
+                }}
+                keyboardType="number-pad"
+                onFocus={() => setFocusedField("maxAttendees")}
+                onBlur={() => setFocusedField(null)}
+              />
+            </View>
+
+            {/* Submit Button */}
+            <Pressable
+              style={({ pressed }) => [
+                styles.submitButton,
+                pressed && styles.submitButtonPressed,
+                loading && styles.submitButtonDisabled,
+              ]}
+              onPress={handleSubmit}
+              disabled={loading}
+            >
+              {loading ? (
+                <ActivityIndicator size="small" color="#fff" />
+              ) : (
+                <>
+                  <Ionicons name="checkmark-circle" size={24} color="#fff" />
+                  <Text style={styles.submitButtonText}>Create Event</Text>
+                </>
+              )}
+            </Pressable>
+
+            {/* Cancel */}
+            <Pressable onPress={() => router.back()}>
+              <Text style={styles.cancel}>Cancel</Text>
+            </Pressable>
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
     </SafeAreaView>
   );
 }
@@ -210,10 +475,17 @@ const styles = StyleSheet.create({
   headerGradient: {
     backgroundColor: "#2f855a",
     paddingHorizontal: 24,
-    paddingTop: 20,
+    paddingTop: 8,
     paddingBottom: 40,
     borderBottomLeftRadius: 30,
     borderBottomRightRadius: 30,
+  },
+  backButton: {
+    width: 40,
+    height: 40,
+    justifyContent: "center",
+    alignItems: "flex-start",
+    marginBottom: 8,
   },
   title: {
     fontSize: 28,
@@ -237,6 +509,67 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 8,
     elevation: 5,
+    marginBottom: 20,
+  },
+  sectionHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+    gap: 8,
+  },
+  sectionTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#1a202c",
+    flex: 1,
+  },
+  optionalTag: {
+    fontSize: 12,
+    color: "#a0aec0",
+    fontWeight: "500",
+  },
+  divider: {
+    height: 1,
+    backgroundColor: "#e2e8f0",
+    marginVertical: 24,
+  },
+  coverImageContainer: {
+    position: "relative",
+    borderRadius: 16,
+    overflow: "hidden",
+  },
+  coverImage: {
+    width: "100%",
+    height: 180,
+    borderRadius: 16,
+  },
+  removeImageButton: {
+    position: "absolute",
+    top: 12,
+    right: 12,
+    backgroundColor: "rgba(0,0,0,0.5)",
+    borderRadius: 14,
+  },
+  coverImagePlaceholder: {
+    width: "100%",
+    height: 160,
+    borderRadius: 16,
+    backgroundColor: "#f7fafc",
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+    borderStyle: "dashed",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 8,
+  },
+  coverImageText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#718096",
+  },
+  coverImageSubtext: {
+    fontSize: 13,
+    color: "#a0aec0",
   },
   inputGroup: {
     marginBottom: 20,
@@ -274,12 +607,46 @@ const styles = StyleSheet.create({
     height: 120,
     textAlignVertical: "top",
   },
+  dateTimeRow: {
+    marginBottom: 12,
+  },
+  dateTimeCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#f7fafc",
+    borderRadius: 16,
+    padding: 16,
+    borderWidth: 2,
+    borderColor: "#e2e8f0",
+  },
+  dateTimeIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 12,
+    backgroundColor: "#e6fffa",
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  dateTimeContent: {
+    flex: 1,
+  },
+  dateTimeLabel: {
+    fontSize: 12,
+    color: "#718096",
+    marginBottom: 2,
+  },
+  dateTimeValue: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#1a202c",
+  },
   submitButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: "#2f855a",
-    paddingVertical: 16,
+    paddingVertical: 18,
     borderRadius: 16,
     gap: 8,
     marginVertical: 8,
@@ -299,7 +666,7 @@ const styles = StyleSheet.create({
   },
   submitButtonText: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "700",
   },
   cancelText: {
@@ -313,5 +680,43 @@ const styles = StyleSheet.create({
     marginTop: 20,
     color: "#718096",
     fontSize: 16,
+  },
+  gpsBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#e6fffa",
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    gap: 3,
+  },
+  gpsBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#2f855a",
+  },
+  gpsButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#e6fffa",
+    borderRadius: 12,
+    paddingVertical: 12,
+    marginTop: 8,
+    gap: 8,
+    borderWidth: 1,
+    borderColor: "#2f855a",
+    borderStyle: "dashed",
+  },
+  gpsButtonPressed: {
+    backgroundColor: "#c6f6d5",
+  },
+  gpsButtonDisabled: {
+    opacity: 0.6,
+  },
+  gpsButtonText: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#2f855a",
   },
 });

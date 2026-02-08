@@ -3,6 +3,8 @@ import { router } from "expo-router";
 import { useState } from "react";
 import {
     Alert,
+    KeyboardAvoidingView,
+    Platform,
     Pressable,
     ScrollView,
     StyleSheet,
@@ -18,10 +20,15 @@ export default function SignupScreen() {
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [showPassword, setShowPassword] = useState(false);
-    const [agreedToTerms, setAgreedToTerms] = useState(false);
     const [loading, setLoading] = useState(false);
+    const [agreedToTerms, setAgreedToTerms] = useState(false);
 
     const handleSignup = async () => {
+        if (loading) {
+            console.log("⚠️ Signup already in progress, ignoring duplicate call");
+            return;
+        }
+
         if (!name.trim() || !email.trim() || !password.trim()) {
             Alert.alert("Error", "Please fill in all fields");
             return;
@@ -35,8 +42,18 @@ export default function SignupScreen() {
             return;
         }
 
+        // Basic email validation
+        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        if (!emailRegex.test(email.trim())) {
+            Alert.alert("Error", "Please enter a valid email address");
+            return;
+        }
+
         setLoading(true);
         try {
+            console.log("📧 Creating account with email + password:", email.trim());
+
+            // Step 1: Create account with password
             const { data, error } = await supabase.auth.signUp({
                 email: email.trim(),
                 password: password,
@@ -48,20 +65,57 @@ export default function SignupScreen() {
             });
 
             if (error) {
-                Alert.alert("Signup Failed", error.message);
+                console.error("❌ Signup error:", error);
+                Alert.alert("Error", error.message);
                 return;
             }
 
-            if (data.user) {
-                Alert.alert(
-                    "Success!",
-                    "Account created successfully. You can now login.",
-                    [{ text: "OK", onPress: () => router.replace("/login") }]
-                );
+            if (!data.user) {
+                Alert.alert("Error", "Failed to create account. Please try again.");
+                return;
             }
-        } catch (error) {
-            Alert.alert("Error", "An unexpected error occurred");
-            console.error(error);
+
+            console.log("✅ Account created! User ID:", data.user.id);
+
+            // Check if session was created (email confirmation disabled)
+            if (data.session) {
+                console.log("✅ Session created - email confirmation disabled");
+                Alert.alert(
+                    "Welcome!",
+                    "Account created successfully. Let's set up your profile!",
+                    [{ text: "Continue", onPress: () => router.replace("/profile-setup") }]
+                );
+            } else {
+                // Email confirmation required - send OTP
+                console.log("📧 Sending OTP for email verification...");
+
+                const { error: otpError } = await supabase.auth.signInWithOtp({
+                    email: email.trim(),
+                    options: {
+                        shouldCreateUser: false,
+                    },
+                });
+
+                if (otpError) {
+                    console.error("❌ OTP send error:", otpError);
+                    // Account created but OTP failed - ask user to verify later
+                    Alert.alert(
+                        "Account Created",
+                        "Please check your email to verify your account, then log in.",
+                        [{ text: "OK", onPress: () => router.replace("/login") }]
+                    );
+                    return;
+                }
+
+                // Navigate to OTP verification screen
+                router.push({
+                    pathname: "/verify-otp" as any,
+                    params: { email: email.trim(), isNewUser: "true" },
+                });
+            }
+        } catch (error: any) {
+            console.error("💥 Unexpected error:", error);
+            Alert.alert("Error", "An unexpected error occurred. Please try again.");
         } finally {
             setLoading(false);
         }
@@ -69,114 +123,130 @@ export default function SignupScreen() {
 
     return (
         <SafeAreaView style={styles.container}>
-            <ScrollView contentContainerStyle={styles.scrollContent}>
-                {/* Header */}
-                <View style={styles.header}>
-                    <Text style={styles.logo}>🌿</Text>
-                    <Text style={styles.title}>Join HerbBuddy</Text>
-                    <Text style={styles.subtitle}>Create your account to get started</Text>
-                </View>
-
-                {/* Form */}
-                <View style={styles.form}>
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Full Name</Text>
-                        <View style={styles.inputContainer}>
-                            <Ionicons name="person-outline" size={20} color="#718096" />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="John Doe"
-                                placeholderTextColor="#a0aec0"
-                                value={name}
-                                onChangeText={setName}
-                                autoCapitalize="words"
-                            />
-                        </View>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === "ios" ? "padding" : "height"}
+                keyboardVerticalOffset={Platform.OS === "ios" ? 0 : 20}
+            >
+                <ScrollView
+                    contentContainerStyle={styles.scrollContent}
+                    keyboardShouldPersistTaps="handled"
+                >
+                    {/* Header */}
+                    <View style={styles.header}>
+                        <Text style={styles.logo}>🌿</Text>
+                        <Text style={styles.title}>Join HerbBuddy</Text>
+                        <Text style={styles.subtitle}>Create your account</Text>
                     </View>
 
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Email</Text>
-                        <View style={styles.inputContainer}>
-                            <Ionicons name="mail-outline" size={20} color="#718096" />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="your@email.com"
-                                placeholderTextColor="#a0aec0"
-                                value={email}
-                                onChangeText={setEmail}
-                                keyboardType="email-address"
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
-                        </View>
-                    </View>
-
-                    <View style={styles.inputGroup}>
-                        <Text style={styles.label}>Password</Text>
-                        <View style={styles.inputContainer}>
-                            <Ionicons name="lock-closed-outline" size={20} color="#718096" />
-                            <TextInput
-                                style={styles.input}
-                                placeholder="At least 8 characters"
-                                placeholderTextColor="#a0aec0"
-                                value={password}
-                                onChangeText={setPassword}
-                                secureTextEntry={!showPassword}
-                                autoCapitalize="none"
-                            />
-                            <Pressable onPress={() => setShowPassword(!showPassword)}>
-                                <Ionicons
-                                    name={showPassword ? "eye-outline" : "eye-off-outline"}
-                                    size={20}
-                                    color="#718096"
+                    {/* Form */}
+                    <View style={styles.form}>
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Full Name</Text>
+                            <View style={styles.inputContainer}>
+                                <Ionicons name="person-outline" size={20} color="#718096" />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="John Doe"
+                                    placeholderTextColor="#a0aec0"
+                                    value={name}
+                                    onChangeText={setName}
+                                    autoCapitalize="words"
                                 />
+                            </View>
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Email</Text>
+                            <View style={styles.inputContainer}>
+                                <Ionicons name="mail-outline" size={20} color="#718096" />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="your@email.com"
+                                    placeholderTextColor="#a0aec0"
+                                    value={email}
+                                    onChangeText={setEmail}
+                                    keyboardType="email-address"
+                                    autoCapitalize="none"
+                                    autoCorrect={false}
+                                />
+                            </View>
+                        </View>
+
+                        <View style={styles.inputGroup}>
+                            <Text style={styles.label}>Password</Text>
+                            <View style={styles.inputContainer}>
+                                <Ionicons name="lock-closed-outline" size={20} color="#718096" />
+                                <TextInput
+                                    style={styles.input}
+                                    placeholder="At least 6 characters"
+                                    placeholderTextColor="#a0aec0"
+                                    value={password}
+                                    onChangeText={setPassword}
+                                    secureTextEntry={!showPassword}
+                                    autoCapitalize="none"
+                                />
+                                <Pressable onPress={() => setShowPassword(!showPassword)}>
+                                    <Ionicons
+                                        name={showPassword ? "eye-outline" : "eye-off-outline"}
+                                        size={20}
+                                        color="#718096"
+                                    />
+                                </Pressable>
+                            </View>
+                        </View>
+
+                        <View style={styles.termsContainer}>
+                            <Pressable
+                                style={styles.checkbox}
+                                onPress={() => setAgreedToTerms(!agreedToTerms)}
+                            >
+                                {agreedToTerms && (
+                                    <Ionicons name="checkmark" size={16} color="#2f855a" />
+                                )}
+                            </Pressable>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.termsText}>
+                                    I agree to the{" "}
+                                    <Text
+                                        style={styles.termsLink}
+                                        onPress={() => router.push("/terms-and-conditions")}
+                                    >
+                                        Terms & Conditions
+                                    </Text>
+                                </Text>
+                            </View>
+                        </View>
+
+                        <Pressable
+                            style={({ pressed }) => [
+                                styles.signupButton,
+                                pressed && styles.signupButtonPressed,
+                                loading && styles.signupButtonDisabled,
+                            ]}
+                            onPress={handleSignup}
+                            disabled={loading}
+                        >
+                            <Text style={styles.signupButtonText}>
+                                {loading ? "Creating Account..." : "Create Account"}
+                            </Text>
+                        </Pressable>
+
+                        <View style={styles.divider}>
+                            <View style={styles.dividerLine} />
+                            <Text style={styles.dividerText}>or</Text>
+                            <View style={styles.dividerLine} />
+                        </View>
+
+                        <View style={styles.loginPrompt}>
+                            <Text style={styles.loginText}>Already have an account? </Text>
+                            <Pressable onPress={() => router.push("/login")}>
+                                <Text style={styles.loginLink}>Login</Text>
                             </Pressable>
                         </View>
                     </View>
-
-                    <Pressable
-                        style={styles.termsContainer}
-                        onPress={() => setAgreedToTerms(!agreedToTerms)}
-                    >
-                        <View style={styles.checkbox}>
-                            {agreedToTerms && (
-                                <Ionicons name="checkmark" size={16} color="#fff" />
-                            )}
-                        </View>
-                        <Text style={styles.termsText}>
-                            I agree to the{" "}
-                            <Text style={styles.termsLink}>Terms & Conditions</Text>
-                        </Text>
-                    </Pressable>
-
-                    <Pressable
-                        style={({ pressed }) => [
-                            styles.signupButton,
-                            pressed && styles.signupButtonPressed,
-                            loading && styles.signupButtonDisabled,
-                        ]}
-                        onPress={handleSignup}
-                        disabled={loading}
-                    >
-                        <Text style={styles.signupButtonText}>
-                            {loading ? "Creating Account..." : "Create Account"}
-                        </Text>
-                    </Pressable>
-
-                    <View style={styles.divider}>
-                        <View style={styles.dividerLine} />
-                        <Text style={styles.dividerText}>or</Text>
-                        <View style={styles.dividerLine} />
-                    </View>
-
-                    <View style={styles.loginPrompt}>
-                        <Text style={styles.loginText}>Already have an account? </Text>
-                        <Pressable onPress={() => router.push("/login")}>
-                            <Text style={styles.loginLink}>Login</Text>
-                        </Pressable>
-                    </View>
-                </View>
-            </ScrollView>
+                </ScrollView>
+            </KeyboardAvoidingView>
         </SafeAreaView>
     );
 }
@@ -252,24 +322,24 @@ const styles = StyleSheet.create({
         borderRadius: 6,
         borderWidth: 2,
         borderColor: "#2f855a",
-        backgroundColor: "#fff",
         justifyContent: "center",
         alignItems: "center",
     },
     termsText: {
         fontSize: 14,
         color: "#4a5568",
-        flex: 1,
     },
     termsLink: {
         color: "#2f855a",
         fontWeight: "600",
+        textDecorationLine: "underline",
     },
     signupButton: {
         backgroundColor: "#2f855a",
         borderRadius: 16,
         paddingVertical: 16,
         alignItems: "center",
+        justifyContent: "center",
         shadowColor: "#2f855a",
         shadowOffset: { width: 0, height: 4 },
         shadowOpacity: 0.3,

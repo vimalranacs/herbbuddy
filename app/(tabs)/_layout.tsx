@@ -39,6 +39,13 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="my-events"
+        options={{
+          title: 'My Events',
+          tabBarIcon: ({ color, size }) => <Ionicons name="calendar" size={size || 24} color={color} />,
+        }}
+      />
+      <Tabs.Screen
         name="chats"
         options={{
           title: 'Chats',

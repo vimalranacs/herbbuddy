@@ -1,0 +1,38 @@
+{
+  "cli": {
+    "version": ">= 13.2.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://hqdhxhssxyayshuanmrf.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_bTYOdPXwHlcfMUOn1vRUYg_eaLiG6VJ",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "herbbuddy",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "herbbuddy_unsigned"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_SUPABASE_URL": "https://hqdhxhssxyayshuanmrf.supabase.co",
+        "EXPO_PUBLIC_SUPABASE_ANON_KEY": "sb_publishable_bTYOdPXwHlcfMUOn1vRUYg_eaLiG6VJ",
+        "EXPO_PUBLIC_CLOUDINARY_CLOUD_NAME": "herbbuddy",
+        "EXPO_PUBLIC_CLOUDINARY_UPLOAD_PRESET": "herbbuddy_unsigned"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}

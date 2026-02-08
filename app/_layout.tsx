@@ -42,6 +42,13 @@ export default function RootLayout() {
           }}
         />
         <Stack.Screen
+          name="terms-and-conditions"
+          options={{
+            title: 'Terms & Conditions',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <Stack.Screen
           name="add-event"
           options={{
             presentation: 'modal',
@@ -71,6 +78,25 @@ export default function RootLayout() {
           options={{
             title: 'Chat',
             headerBackTitle: 'Back',
+          }}
+        />
+        <Stack.Screen
+          name="privacy-policy"
+          options={{
+            title: 'Privacy Policy',
+            headerBackTitle: 'Back',
+          }}
+        />
+        <Stack.Screen
+          name="verify-otp"
+          options={{
+            headerShown: false,
+          }}
+        />
+        <Stack.Screen
+          name="auth/callback"
+          options={{
+            headerShown: false,
           }}
         />
       </Stack>
