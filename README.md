@@ -1,50 +1,98 @@
-# Welcome to your Expo app 👋
+# 🌿 HerbBuddy
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
+HerbBuddy is a community-driven event and social connection app focused on trust, vibes, and meaningful interactions.  
+Users can discover events, join plans, chat with participants, and build a reputation through vibe and trust ratings.
 
-## Get started
+---
 
-1. Install dependencies
+## 🚀 Tech Stack
 
-   ```bash
-   npm install
-   ```
+### Frontend
+- Expo (React Native)
+- Expo Router
+- TypeScript
+- React Native Maps
+- Socket-ready architecture
 
-2. Start the app
+### Backend (In Progress)
+- Node.js
+- Express.js
+- Railway.app (hosting)
+- Socket.io (real-time)
+- node-cron (background jobs)
 
-   ```bash
-   npx expo start
-   ```
+### Authentication & Database
+- Supabase Auth (Email, OTP, OAuth)
+- Supabase PostgreSQL (single source of truth)
 
-In the output, you'll find options to open the app in a
+---
 
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
+## 🧠 Core Features
 
-You can start developing by editing the files inside the **app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
+- 🔐 Secure authentication (Supabase)
+- 📍 Event creation & discovery
+- 🗓️ Events with start & end time
+- 💬 Real-time chat between participants
+- ⭐ Vibe & Trust rating system after events
+- 🛡️ Content moderation (illegal / drug / sexual content blocking)
+- ⚡ Smooth loading animations (skeletons & blur effects)
 
-## Get a fresh project
+---
 
-When you're ready, run:
+## 🧩 Architecture Overview
 
-```bash
-npm run reset-project
+- Mobile app communicates **only** with backend APIs
+- Backend (Railway) acts as middleware and gatekeeper
+- Supabase is used for:
+  - Authentication
+  - PostgreSQL database
+- No direct database calls from the client
+
+---
+
+## 🛠️ Project Structure
+
+```
+herbbuddy/
+├── app/                 # Expo app (frontend)
+├── backend/             # Express backend (Railway)
+│   ├── src/
+│   ├── package.json
+│   └── tsconfig.json
+├── components/
+├── lib/
+└── README.md
 ```
 
-This command will move the starter code to the **app-example** directory and create a blank **app** directory where you can start developing.
+---
 
-## Learn more
+## 🧪 Development Status
 
-To learn more about developing your project with Expo, look at the following resources:
+- Frontend: Actively developing
+- Backend: Being migrated to Railway
+- Realtime chat: Planned via Socket.io
+- Ratings system: Planned
 
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
+---
 
-## Join the community
+## 📌 Environment Variables (Backend)
 
-Join our community of developers creating universal apps.
+These are set in Railway, **not committed to GitHub**:
 
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+- `DATABASE_URL`
+- `SUPABASE_JWT_SECRET`
+- `PORT=3000`
+
+---
+
+## 👤 Author
+
+Built with ❤️ by **Vimal Rana**  
+B.Tech CSE | App Developer | Builder
+
+---
+
+## ⚠️ Note
+
+This project is under active development.  
+Breaking changes may occur as architecture evolves.
