@@ -26,20 +26,12 @@ HerbBuddy is built to solve the problem of *loneliness in the digital age*. It a
 -   **Styling**: Custom Design System (No heavy UI libraries)
 -   **Navigation**: Expo Router (File-based routing)
 
-## 📱 Installation
-1.  **Clone the repository**:
-    ```bash
-    git clone https://github.com/StartLord09/herb-buddy.git
-    cd herb-buddy
-    ```
-2.  **Install dependencies**:
-    ```bash
-    npm install
-    ```
-3.  **Start the app**:
-    ```bash
-    npx expo start
-    ```
+## 📱 Download & Install
+1.  Navigate to the **[Releases](../../releases)** tab of this repository.
+2.  Expand the latest version (e.g., `v1.0.0`).
+3.  Download the **`.apk`** file from the *Assets* section.
+4.  Install the file on your Android device.
+    > *Note: You may need to enable "Install from Unknown Sources" in your settings.*
 
 ---
 
