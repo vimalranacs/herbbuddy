@@ -21,15 +21,17 @@ interface Event {
     description: string;
     max_attendees: number;
     host_id: string;
+    status?: string;
+    event_end_date?: string;
     attendee_count?: number;
 }
 
-type TabType = "created" | "joined";
+type TabType = "upcoming" | "history";
 
 export default function MyEventsScreen() {
-    const [activeTab, setActiveTab] = useState<TabType>("created");
-    const [createdEvents, setCreatedEvents] = useState<Event[]>([]);
-    const [joinedEvents, setJoinedEvents] = useState<Event[]>([]);
+    const [activeTab, setActiveTab] = useState<TabType>("upcoming");
+    const [upcomingEvents, setUpcomingEvents] = useState<Event[]>([]);
+    const [historyEvents, setHistoryEvents] = useState<Event[]>([]);
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
     const [currentUserId, setCurrentUserId] = useState<string | null>(null);
@@ -61,64 +63,82 @@ export default function MyEventsScreen() {
                 return;
             }
 
-            // Fetch events created by user
-            const { data: myCreatedEvents, error: createdError } = await supabase
+            // Fetch ALL relevant events (Hosted + Joined)
+            // 1. Hosted
+            const { data: hosted, error: hostedError } = await supabase
                 .from("events")
                 .select("*")
                 .eq("host_id", userId)
-                .order("created_at", { ascending: false });
+                .order("event_date", { ascending: true }); // Upcoming soonest first
 
-            if (createdError) {
-                console.error("Error fetching created events:", createdError);
-            } else {
-                // Get attendee counts for created events
-                const eventsWithCounts = await Promise.all(
-                    (myCreatedEvents || []).map(async (event) => {
-                        const { count } = await supabase
-                            .from("event_participants")
-                            .select("*", { count: "exact", head: true })
-                            .eq("event_id", event.id);
-                        return { ...event, attendee_count: count || 0 };
-                    })
-                );
-                setCreatedEvents(eventsWithCounts);
-            }
-
-            // Fetch events joined by user (where user is participant but not host)
-            const { data: participations, error: joinedError } = await supabase
+            // 2. Joined
+            const { data: participations } = await supabase
                 .from("event_participants")
                 .select("event_id")
                 .eq("user_id", userId);
 
-            if (joinedError) {
-                console.error("Error fetching joined events:", joinedError);
-            } else if (participations && participations.length > 0) {
+            let joined: any[] = [];
+            if (participations && participations.length > 0) {
                 const eventIds = participations.map((p) => p.event_id);
-                const { data: myJoinedEvents, error: eventsError } = await supabase
+                const { data: joinedData } = await supabase
                     .from("events")
                     .select("*")
                     .in("id", eventIds)
-                    .neq("host_id", userId)
-                    .order("created_at", { ascending: false });
-
-                if (eventsError) {
-                    console.error("Error fetching joined event details:", eventsError);
-                } else {
-                    // Get attendee counts for joined events
-                    const eventsWithCounts = await Promise.all(
-                        (myJoinedEvents || []).map(async (event) => {
-                            const { count } = await supabase
-                                .from("event_participants")
-                                .select("*", { count: "exact", head: true })
-                                .eq("event_id", event.id);
-                            return { ...event, attendee_count: count || 0 };
-                        })
-                    );
-                    setJoinedEvents(eventsWithCounts);
-                }
-            } else {
-                setJoinedEvents([]);
+                    .neq("host_id", userId) // Exclude if host (redundant safety)
+                    .order("event_date", { ascending: true });
+                joined = joinedData || [];
             }
+
+            const allEvents = [...(hosted || []), ...joined];
+
+            // 3. Process Counts & Status
+            const eventsWithCounts = await Promise.all(
+                allEvents.map(async (event) => {
+                    const { count } = await supabase
+                        .from("event_participants")
+                        .select("*", { count: "exact", head: true })
+                        .eq("event_id", event.id);
+                    return { ...event, attendee_count: count || 0 };
+                })
+            );
+
+            // 4. Split and Auto-Complete
+            const now = new Date();
+            const upcoming: Event[] = [];
+            const history: Event[] = [];
+            const expiredIds: string[] = [];
+
+            eventsWithCounts.forEach(e => {
+                const endDate = e.event_end_date ? new Date(e.event_end_date) : null;
+                const isExpired = endDate ? endDate < now : false;
+                const isCompleted = e.status === 'completed' || isExpired;
+
+                if (isCompleted) {
+                    history.push({ ...e, status: 'completed' }); // Treat as completed for UI
+                    if (e.status !== 'completed' && endDate) {
+                        expiredIds.push(e.id);
+                    }
+                } else {
+                    upcoming.push(e);
+                }
+            });
+
+            // Sort logic: Upcoming (sooner first), History (recent first)
+            upcoming.sort((a, b) => new Date(a.time).getTime() - new Date(b.time).getTime()); // Approximate string sort? No, use event_date if available.
+            // Better: use event_date if available, else fallback
+            const getDate = (e: any) => e.event_date ? new Date(e.event_date).getTime() : 0;
+            upcoming.sort((a, b) => getDate(a) - getDate(b));
+            history.sort((a, b) => getDate(b) - getDate(a));
+
+            setUpcomingEvents(upcoming);
+            setHistoryEvents(history);
+
+            // 5. Fire Auto-Complete Update
+            if (expiredIds.length > 0) {
+                console.log("Auto-completing events:", expiredIds);
+                await supabase.from("events").update({ status: 'completed' }).in('id', expiredIds);
+            }
+
         } catch (error) {
             console.error("Error loading events:", error);
         } finally {
@@ -132,63 +152,66 @@ export default function MyEventsScreen() {
         loadEvents();
     };
 
-    const displayedEvents = activeTab === "created" ? createdEvents : joinedEvents;
+    const displayedEvents = activeTab === "upcoming" ? upcomingEvents : historyEvents;
 
-    const renderEventCard = (event: Event, isCreated: boolean) => (
-        <Pressable
-            key={event.id}
-            style={styles.eventCard}
-            onPress={() =>
-                router.push(
-                    `/join-plan?eventId=${event.id}&title=${encodeURIComponent(event.title)}`
-                )
-            }
-        >
-            <View style={[styles.eventBadge, isCreated ? styles.createdBadge : styles.joinedBadge]}>
-                <Ionicons
-                    name={isCreated ? "star" : "leaf"}
-                    size={22}
-                    color={isCreated ? "#0891b2" : "#2f855a"}
-                />
-            </View>
-
-            <View style={styles.eventContent}>
-                <View style={styles.eventHeader}>
-                    <Text style={styles.eventTitle} numberOfLines={1}>
-                        {event.title}
-                    </Text>
-                    <View style={[styles.typeBadge, isCreated ? styles.createdTypeBadge : styles.joinedTypeBadge]}>
-                        <Text style={[styles.typeBadgeText, isCreated ? styles.createdTypeBadgeText : styles.joinedTypeBadgeText]}>
-                            {isCreated ? "Host" : "Joined"}
-                        </Text>
-                    </View>
+    const renderEventCard = (event: Event) => {
+        const isHost = event.host_id === currentUserId;
+        return (
+            <Pressable
+                key={event.id}
+                style={styles.eventCard}
+                onPress={() =>
+                    router.push(
+                        `/join-plan?eventId=${event.id}&title=${encodeURIComponent(event.title)}`
+                    )
+                }
+            >
+                <View style={[styles.eventBadge, isHost ? styles.createdBadge : styles.joinedBadge]}>
+                    <Ionicons
+                        name={isHost ? "star" : "leaf"}
+                        size={22}
+                        color={isHost ? "#0891b2" : "#2f855a"}
+                    />
                 </View>
 
-                <View style={styles.eventDetails}>
-                    <View style={styles.eventDetailRow}>
-                        <Ionicons name="location-outline" size={14} color="#718096" />
-                        <Text style={styles.eventDetailText} numberOfLines={1}>
-                            {event.location}
+                <View style={styles.eventContent}>
+                    <View style={styles.eventHeader}>
+                        <Text style={styles.eventTitle} numberOfLines={1}>
+                            {event.title}
                         </Text>
+                        <View style={[styles.typeBadge, isHost ? styles.createdTypeBadge : styles.joinedTypeBadge]}>
+                            <Text style={[styles.typeBadgeText, isHost ? styles.createdTypeBadgeText : styles.joinedTypeBadgeText]}>
+                                {isHost ? "Host" : "Joined"}
+                            </Text>
+                        </View>
                     </View>
-                    <View style={styles.eventDetailRow}>
-                        <Ionicons name="time-outline" size={14} color="#718096" />
-                        <Text style={styles.eventDetailText}>{event.time}</Text>
-                    </View>
-                </View>
 
-                <View style={styles.eventFooter}>
-                    <View style={styles.attendeesInfo}>
-                        <Ionicons name="people" size={14} color="#718096" />
-                        <Text style={styles.attendeesText}>
-                            {event.attendee_count || 0}/{event.max_attendees} joined
-                        </Text>
+                    <View style={styles.eventDetails}>
+                        <View style={styles.eventDetailRow}>
+                            <Ionicons name="location-outline" size={14} color="#718096" />
+                            <Text style={styles.eventDetailText} numberOfLines={1}>
+                                {event.location}
+                            </Text>
+                        </View>
+                        <View style={styles.eventDetailRow}>
+                            <Ionicons name="time-outline" size={14} color="#718096" />
+                            <Text style={styles.eventDetailText}>{event.time}</Text>
+                        </View>
                     </View>
-                    <Ionicons name="chevron-forward" size={18} color="#a0aec0" />
+
+                    <View style={styles.eventFooter}>
+                        <View style={styles.attendeesInfo}>
+                            <Ionicons name="people" size={14} color="#718096" />
+                            <Text style={styles.attendeesText}>
+                                {event.attendee_count || 0}/{event.max_attendees} joined • {event.status === 'completed' ? 'Ended' : 'Upcoming'}
+                            </Text>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color="#a0aec0" />
+                    </View>
                 </View>
-            </View>
-        </Pressable>
-    );
+            </Pressable>
+        );
+    };
 
     if (loading) {
         return (
@@ -221,46 +244,46 @@ export default function MyEventsScreen() {
             <View style={styles.statsContainer}>
                 <View style={styles.statCard}>
                     <View style={[styles.statIcon, { backgroundColor: "#e0f2fe" }]}>
-                        <Ionicons name="star" size={20} color="#0891b2" />
+                        <Ionicons name="calendar-outline" size={20} color="#0891b2" />
                     </View>
-                    <Text style={styles.statNumber}>{createdEvents.length}</Text>
-                    <Text style={styles.statLabel}>Created</Text>
+                    <Text style={styles.statNumber}>{upcomingEvents.length}</Text>
+                    <Text style={styles.statLabel}>Upcoming</Text>
                 </View>
                 <View style={styles.statCard}>
-                    <View style={[styles.statIcon, { backgroundColor: "#d1fae5" }]}>
-                        <Ionicons name="leaf" size={20} color="#2f855a" />
+                    <View style={[styles.statIcon, { backgroundColor: "#f3f4f6" }]}>
+                        <Ionicons name="time-outline" size={20} color="#4b5563" />
                     </View>
-                    <Text style={styles.statNumber}>{joinedEvents.length}</Text>
-                    <Text style={styles.statLabel}>Joined</Text>
+                    <Text style={styles.statNumber}>{historyEvents.length}</Text>
+                    <Text style={styles.statLabel}>Past</Text>
                 </View>
             </View>
 
             {/* Tab Filter */}
             <View style={styles.tabContainer}>
                 <Pressable
-                    style={[styles.tab, activeTab === "created" && styles.activeTab]}
-                    onPress={() => setActiveTab("created")}
+                    style={[styles.tab, activeTab === "upcoming" && styles.activeTab]}
+                    onPress={() => setActiveTab("upcoming")}
                 >
                     <Ionicons
-                        name="star"
+                        name="calendar"
                         size={18}
-                        color={activeTab === "created" ? "#0891b2" : "#718096"}
+                        color={activeTab === "upcoming" ? "#0891b2" : "#718096"}
                     />
-                    <Text style={[styles.tabText, activeTab === "created" && styles.activeTabText]}>
-                        Created ({createdEvents.length})
+                    <Text style={[styles.tabText, activeTab === "upcoming" && styles.activeTabText]}>
+                        Upcoming ({upcomingEvents.length})
                     </Text>
                 </Pressable>
                 <Pressable
-                    style={[styles.tab, activeTab === "joined" && styles.activeTab]}
-                    onPress={() => setActiveTab("joined")}
+                    style={[styles.tab, activeTab === "history" && styles.activeTab]}
+                    onPress={() => setActiveTab("history")}
                 >
                     <Ionicons
-                        name="leaf"
+                        name="time"
                         size={18}
-                        color={activeTab === "joined" ? "#2f855a" : "#718096"}
+                        color={activeTab === "history" ? "#4b5563" : "#718096"}
                     />
-                    <Text style={[styles.tabText, activeTab === "joined" && styles.activeTabTextJoined]}>
-                        Joined ({joinedEvents.length})
+                    <Text style={[styles.tabText, activeTab === "history" && styles.activeTabTextJoined]}>
+                        History ({historyEvents.length})
                     </Text>
                 </Pressable>
             </View>
@@ -282,34 +305,34 @@ export default function MyEventsScreen() {
                 {displayedEvents.length === 0 ? (
                     <View style={styles.emptyState}>
                         <Ionicons
-                            name={activeTab === "created" ? "star-outline" : "leaf-outline"}
+                            name={activeTab === "upcoming" ? "calendar-outline" : "time-outline"}
                             size={64}
                             color="#cbd5e0"
                         />
                         <Text style={styles.emptyTitle}>
-                            {activeTab === "created"
-                                ? "No events created yet"
-                                : "No events joined yet"}
+                            {activeTab === "upcoming"
+                                ? "No upcoming events"
+                                : "No past events"}
                         </Text>
                         <Text style={styles.emptyText}>
-                            {activeTab === "created"
-                                ? "Create your first event and invite others!"
-                                : "Explore and join events near you!"}
+                            {activeTab === "upcoming"
+                                ? "Join an event or create your own!"
+                                : "Events you complete will appear here."}
                         </Text>
                         <Pressable
                             style={styles.emptyButton}
                             onPress={() =>
-                                router.push(activeTab === "created" ? "/add-event" : "/(tabs)/explore")
+                                router.push(activeTab === "upcoming" ? "/(tabs)/explore" : "/add-event")
                             }
                         >
                             <Text style={styles.emptyButtonText}>
-                                {activeTab === "created" ? "Create Event" : "Explore Events"}
+                                {activeTab === "upcoming" ? "Explore Events" : "Create Event"}
                             </Text>
                         </Pressable>
                     </View>
                 ) : (
                     displayedEvents.map((event) =>
-                        renderEventCard(event, activeTab === "created")
+                        renderEventCard(event)
                     )
                 )}
 

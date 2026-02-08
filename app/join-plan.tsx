@@ -11,6 +11,7 @@ import {
     View,
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import RatingModal from "../components/RatingModal";
 import { getGuestProfile, isGuestMode } from "../lib/guest-mode";
 import { supabase } from "../lib/supabase";
 
@@ -22,11 +23,17 @@ interface Event {
     time: string;
     max_attendees: number;
     host_id: string;
+    tags?: string[];
+    contribution_needed?: boolean;
+    contribution_details?: string;
+    status?: string;
+    event_end_date?: string;
 }
 
 interface Profile {
     id: string;
     full_name: string;
+    gender?: string;
 }
 
 export default function JoinPlanScreen() {
@@ -41,6 +48,10 @@ export default function JoinPlanScreen() {
     const [hasJoined, setHasJoined] = useState(false);
     const [isHost, setIsHost] = useState(false);
     const [participants, setParticipants] = useState<Profile[]>([]);
+
+    // Rating state
+    const [showRatingModal, setShowRatingModal] = useState(false);
+    const [userToRate, setUserToRate] = useState<{ id: string; name: string } | null>(null);
 
     useEffect(() => {
         loadEventData();
@@ -110,7 +121,7 @@ export default function JoinPlanScreen() {
             if (eventData?.host_id) {
                 const { data: profileData } = await supabase
                     .from("profiles")
-                    .select("id, full_name")
+                    .select("id, full_name, gender")
                     .eq("id", eventData.host_id)
                     .single();
 
@@ -129,7 +140,7 @@ export default function JoinPlanScreen() {
                 const participantIds = participantData.map((p) => p.user_id);
                 const { data: participantProfiles } = await supabase
                     .from("profiles")
-                    .select("id, full_name")
+                    .select("id, full_name, gender")
                     .in("id", participantIds);
 
                 if (participantProfiles) {
@@ -288,6 +299,36 @@ export default function JoinPlanScreen() {
         );
     };
 
+    const handleMarkComplete = async () => {
+        if (!event) return;
+
+        Alert.alert(
+            "Mark as Complete",
+            "Are you sure you want to mark this event as completed? This will allow participants to rate each other.",
+            [
+                { text: "Cancel", style: "cancel" },
+                {
+                    text: "Yes, Complete",
+                    onPress: async () => {
+                        setLoading(true);
+                        const { error } = await supabase
+                            .from("events")
+                            .update({ status: 'completed' })
+                            .eq("id", event.id);
+
+                        setLoading(false);
+                        if (error) {
+                            Alert.alert("Error", "Failed to update event status");
+                        } else {
+                            setEvent({ ...event, status: 'completed' });
+                            Alert.alert("Success", "Event marked as completed!");
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     if (loading) {
         return (
             <SafeAreaView style={styles.container}>
@@ -347,47 +388,95 @@ export default function JoinPlanScreen() {
                         {isFull
                             ? "Event Full"
                             : `${attendeeCount}/${event.max_attendees} spots filled • ${spotsRemaining} remaining`}
-                    </Text>
-                </View>
+                    </Text >
+                </View >
+
+                {/* Tags */}
+                {
+                    event.tags && event.tags.length > 0 && (
+                        <View style={styles.tagsContainer}>
+                            {event.tags.map(tag => (
+                                <View key={tag} style={styles.tagBadge}>
+                                    <Text style={styles.tagText}>{tag}</Text>
+                                </View>
+                            ))}
+                        </View>
+                    )
+                }
+
+                {/* Contribution */}
+                {
+                    event.contribution_needed && (
+                        <View style={styles.contributionContainer}>
+                            <Ionicons name="wallet" size={20} color="#d97706" />
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.contributionLabel}>Contribution Needed</Text>
+                                <Text style={styles.contributionValue}>
+                                    {event.contribution_details || "Contact host for details"}
+                                </Text>
+                            </View>
+                        </View>
+                    )
+                }
 
                 {/* Host Info */}
-                {hostProfile && !isHost && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>Host</Text>
-                        <Pressable
-                            style={styles.hostCard}
-                            onPress={() => router.push(`/view-profile?userId=${hostProfile.id}`)}
-                        >
-                            <View style={styles.hostAvatar}>
-                                <Text style={styles.hostAvatarText}>
-                                    {hostProfile.full_name?.[0] || "H"}
-                                </Text>
-                            </View>
-                            <View style={styles.hostInfo}>
-                                <Text style={styles.hostName}>
-                                    {hostProfile.full_name || "Host"}
-                                </Text>
-                                <View style={styles.ratingContainer}>
-                                    <Ionicons name="eye-outline" size={14} color="#718096" />
-                                    <Text style={styles.rating}>Tap to view profile</Text>
+                {
+                    hostProfile && !isHost && (
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>Host</Text>
+                            <Pressable
+                                style={styles.hostCard}
+                                onPress={() => router.push(`/view-profile?userId=${hostProfile.id}`)}
+                            >
+                                <View style={styles.hostAvatar}>
+                                    <Text style={styles.hostAvatarText}>
+                                        {hostProfile.full_name?.[0] || "H"}
+                                    </Text>
                                 </View>
-                            </View>
-                            {/* Only show chat button after joining */}
-                            {hasJoined && (
-                                <Pressable
-                                    style={styles.chatHostButton}
-                                    onPress={(e) => {
-                                        e.stopPropagation();
-                                        handleChatWithHost();
-                                    }}
-                                >
-                                    <Ionicons name="chatbubble-outline" size={18} color="#2f855a" />
-                                    <Text style={styles.chatHostText}>Chat</Text>
-                                </Pressable>
-                            )}
-                        </Pressable>
-                    </View>
-                )}
+                                <View style={styles.hostInfo}>
+                                    <Text style={styles.hostName}>
+                                        {hostProfile.full_name || "Host"}
+                                    </Text>
+                                    <View style={styles.ratingContainer}>
+                                        <Ionicons name="eye-outline" size={14} color="#718096" />
+                                        <Text style={styles.rating}>Tap to view profile</Text>
+                                    </View>
+                                </View>
+                                {/* Only show chat button after joining */}
+                                {hasJoined && (
+                                    <Pressable
+                                        style={styles.chatHostButton}
+                                        onPress={(e) => {
+                                            e.stopPropagation();
+                                            // Check if host is female
+                                            const isFemaleHost = hostProfile.gender?.toLowerCase() === 'female' || hostProfile.gender?.toLowerCase() === 'woman';
+
+                                            if (isFemaleHost) {
+                                                // Redirect to profile for request
+                                                router.push(`/view-profile?userId=${hostProfile.id}`);
+                                            } else {
+                                                // Direct chat allowed
+                                                handleChatWithHost();
+                                            }
+                                        }}
+                                    >
+                                        {(hostProfile.gender?.toLowerCase() === 'female' || hostProfile.gender?.toLowerCase() === 'woman') ? (
+                                            <>
+                                                <Ionicons name="lock-closed" size={14} color="#2f855a" />
+                                                <Text style={styles.chatHostText}>View</Text>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <Ionicons name="chatbubble-outline" size={18} color="#2f855a" />
+                                                <Text style={styles.chatHostText}>Chat</Text>
+                                            </>
+                                        )}
+                                    </Pressable>
+                                )}
+                            </Pressable>
+                        </View>
+                    )
+                }
 
                 {/* Details */}
                 <View style={styles.section}>
@@ -412,73 +501,109 @@ export default function JoinPlanScreen() {
                 </View>
 
                 {/* Participants Section - show when there are participants and user is host or has joined */}
-                {participants.length > 0 && (isHost || hasJoined) && (
-                    <View style={styles.section}>
-                        <Text style={styles.sectionTitle}>
-                            Participants ({participants.length})
-                        </Text>
-                        {participants.map((participant) => (
-                            <Pressable
-                                key={participant.id}
-                                style={styles.participantCard}
-                                onPress={() => router.push(`/view-profile?userId=${participant.id}`)}
-                            >
-                                <View style={styles.participantAvatar}>
-                                    <Text style={styles.participantAvatarText}>
-                                        {participant.full_name?.[0] || "?"}
-                                    </Text>
-                                </View>
-                                <View style={styles.participantInfo}>
-                                    <Text style={styles.participantName}>
-                                        {participant.full_name || "Unknown User"}
-                                        {participant.id === currentUserId && " (You)"}
-                                    </Text>
-                                    <View style={styles.participantHint}>
-                                        <Ionicons name="eye-outline" size={12} color="#718096" />
-                                        <Text style={styles.participantHintText}>Tap to view profile</Text>
+                {
+                    participants.length > 0 && (isHost || hasJoined) && (
+                        <View style={styles.section}>
+                            <Text style={styles.sectionTitle}>
+                                Participants ({participants.length})
+                            </Text>
+                            {participants.map((participant) => (
+                                <Pressable
+                                    key={participant.id}
+                                    style={styles.participantCard}
+                                    onPress={() => router.push(`/view-profile?userId=${participant.id}`)}
+                                >
+                                    <View style={styles.participantAvatar}>
+                                        <Text style={styles.participantAvatarText}>
+                                            {participant.full_name?.[0] || "?"}
+                                        </Text>
                                     </View>
-                                </View>
-                                {/* Chat button - don't show for yourself */}
-                                {participant.id !== currentUserId && (
-                                    <Pressable
-                                        style={styles.participantChatBtn}
-                                        onPress={(e) => {
-                                            e.stopPropagation();
-                                            router.push(
-                                                `/chat?recipientId=${participant.id}&name=${encodeURIComponent(
-                                                    participant.full_name || "User"
-                                                )}&eventId=${event.id}`
+                                    <View style={styles.participantInfo}>
+                                        <Text style={styles.participantName}>
+                                            {participant.full_name || "Unknown User"}
+                                            {participant.id === currentUserId && " (You)"}
+                                        </Text>
+                                        <View style={styles.participantHint}>
+                                            <Ionicons name="eye-outline" size={12} color="#718096" />
+                                            <Text style={styles.participantHintText}>Tap to view profile</Text>
+                                        </View>
+                                    </View>
+                                    {/* Chat button - don't show for yourself or females (must go through request) */}
+                                    {participant.id !== currentUserId && (
+                                        (() => {
+                                            const isFemale = participant.gender?.toLowerCase() === 'female' || participant.gender?.toLowerCase() === 'woman';
+                                            if (isFemale) {
+                                                // Female users - redirect to profile for request
+                                                return (
+                                                    <View style={styles.requestRequiredHint}>
+                                                        <Ionicons name="lock-closed" size={14} color="#8b5cf6" />
+                                                    </View>
+                                                );
+                                            }
+                                            // Male users - direct chat allowed
+                                            return (
+                                                <View style={{ flexDirection: 'row', gap: 8 }}>
+                                                    {/* Rate Button */}
+                                                    {event?.status === 'completed' && participant.id !== currentUserId && (
+                                                        <Pressable
+                                                            style={[styles.participantChatBtn, { backgroundColor: '#fff7ed', borderColor: '#fdba74' }]}
+                                                            onPress={(e) => {
+                                                                e.stopPropagation();
+                                                                setUserToRate({ id: participant.id, name: participant.full_name });
+                                                                setShowRatingModal(true);
+                                                            }}
+                                                        >
+                                                            <Ionicons name="star" size={16} color="#f97316" />
+                                                        </Pressable>
+                                                    )}
+
+                                                    <Pressable
+                                                        style={styles.participantChatBtn}
+                                                        onPress={(e) => {
+                                                            e.stopPropagation();
+                                                            router.push(
+                                                                `/chat?recipientId=${participant.id}&name=${encodeURIComponent(
+                                                                    participant.full_name || "User"
+                                                                )}&eventId=${event.id}`
+                                                            );
+                                                        }}
+                                                    >
+                                                        <Ionicons name="chatbubble-outline" size={16} color="#2f855a" />
+                                                    </Pressable>
+                                                </View>
                                             );
-                                        }}
-                                    >
-                                        <Ionicons name="chatbubble-outline" size={16} color="#2f855a" />
-                                    </Pressable>
-                                )}
-                            </Pressable>
-                        ))}
-                    </View>
-                )}
+                                        })()
+                                    )}
+                                </Pressable>
+                            ))}
+                        </View>
+                    )
+                }
 
                 {/* Info Note */}
-                {!isHost && !hasJoined && (
-                    <View style={styles.infoNote}>
-                        <Ionicons name="information-circle" size={20} color="#2f855a" />
-                        <Text style={styles.infoNoteText}>
-                            Join the event to unlock chat with the host!
-                        </Text>
-                    </View>
-                )}
+                {
+                    !isHost && !hasJoined && (
+                        <View style={styles.infoNote}>
+                            <Ionicons name="information-circle" size={20} color="#2f855a" />
+                            <Text style={styles.infoNoteText}>
+                                Join the event to unlock chat with the host!
+                            </Text>
+                        </View>
+                    )
+                }
 
                 {/* Already Joined Note */}
-                {hasJoined && (
-                    <View style={styles.joinedNote}>
-                        <Ionicons name="checkmark-circle" size={20} color="#2f855a" />
-                        <Text style={styles.joinedNoteText}>
-                            You've joined this event!
-                        </Text>
-                    </View>
-                )}
-            </ScrollView>
+                {
+                    hasJoined && (
+                        <View style={styles.joinedNote}>
+                            <Ionicons name="checkmark-circle" size={20} color="#2f855a" />
+                            <Text style={styles.joinedNoteText}>
+                                You've joined this event!
+                            </Text>
+                        </View>
+                    )
+                }
+            </ScrollView >
 
             {/* Bottom Action */}
             <View style={styles.footer}>
@@ -498,6 +623,20 @@ export default function JoinPlanScreen() {
                                 {deleting ? "Deleting..." : "Delete Event"}
                             </Text>
                         </Pressable>
+
+                        {event?.status !== 'completed' && (
+                            <Pressable
+                                style={({ pressed }) => [
+                                    styles.completeButton,
+                                    pressed && styles.buttonPressed,
+                                ]}
+                                onPress={handleMarkComplete}
+                            >
+                                <Ionicons name="checkmark-done-circle" size={20} color="#fff" />
+                                <Text style={styles.completeButtonText}>Complete</Text>
+                            </Pressable>
+                        )}
+
                         <Pressable style={styles.cancelButton} onPress={() => router.back()}>
                             <Text style={styles.cancelButtonText}>Back</Text>
                         </Pressable>
@@ -548,7 +687,26 @@ export default function JoinPlanScreen() {
                     </>
                 )}
             </View>
-        </SafeAreaView>
+
+            {/* Rating Modal */}
+            {
+                event && userToRate && currentUserId && (
+                    <RatingModal
+                        visible={showRatingModal}
+                        onClose={() => setShowRatingModal(false)}
+                        onSubmit={() => {
+                            setShowRatingModal(false);
+                            Alert.alert("Success", "Rating submitted successfully!");
+                        }}
+                        eventId={event.id}
+                        eventTitle={event.title}
+                        ratedUserId={userToRate.id}
+                        ratedUserName={userToRate.name}
+                        raterId={currentUserId}
+                    />
+                )
+            }
+        </SafeAreaView >
     );
 }
 
@@ -560,6 +718,26 @@ const styles = StyleSheet.create({
     content: {
         padding: 24,
         paddingBottom: 200,
+    },
+    completeButton: {
+        flex: 1,
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+        backgroundColor: "#0891b2",
+        paddingVertical: 14,
+        borderRadius: 16,
+        gap: 8,
+        shadowColor: "#0891b2",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.3,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    completeButtonText: {
+        color: "#fff",
+        fontSize: 16,
+        fontWeight: "bold",
     },
     loadingContainer: {
         flex: 1,
@@ -884,5 +1062,56 @@ const styles = StyleSheet.create({
         alignItems: "center",
         borderWidth: 1,
         borderColor: "#2f855a",
+    },
+    requestRequiredHint: {
+        width: 36,
+        height: 36,
+        borderRadius: 18,
+        backgroundColor: "#f5f3ff",
+        justifyContent: "center",
+        alignItems: "center",
+        borderWidth: 1,
+        borderColor: "#8b5cf6",
+    },
+    tagsContainer: {
+        flexDirection: "row",
+        flexWrap: "wrap",
+        gap: 8,
+        marginTop: 16,
+    },
+    tagBadge: {
+        backgroundColor: "#f0fdf4",
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 20,
+        borderWidth: 1,
+        borderColor: "#bbf7d0",
+    },
+    tagText: {
+        fontSize: 13,
+        color: "#15803d",
+        fontWeight: "600",
+    },
+    contributionContainer: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#fffbeb",
+        padding: 12,
+        borderRadius: 12,
+        marginTop: 16,
+        borderWidth: 1,
+        borderColor: "#fcd34d",
+        gap: 12,
+    },
+    contributionLabel: {
+        fontSize: 12,
+        color: "#92400e",
+        fontWeight: "600",
+        marginBottom: 2,
+    },
+    contributionValue: {
+        fontSize: 15,
+        color: "#b45309",
+        fontWeight: "700",
     },
 });

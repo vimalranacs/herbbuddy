@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router, useFocusEffect } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-    ActivityIndicator,
     Animated,
     Image,
     Pressable,
@@ -10,8 +9,9 @@ import {
     ScrollView,
     StyleSheet,
     Text,
-    View,
+    View
 } from "react-native";
+import { SkeletonChatList } from "../../components/SkeletonLoader";
 import { getGuestProfile, isGuestMode } from "../../lib/guest-mode";
 import { supabase } from "../../lib/supabase";
 
@@ -443,21 +443,20 @@ export default function ChatsScreen() {
             >
                 {loading ? (
                     <View style={styles.loadingContainer}>
-                        <ActivityIndicator size="large" color="#2f855a" />
-                        <Text style={styles.loadingText}>Loading chats...</Text>
+                        <SkeletonChatList count={5} />
                     </View>
                 ) : chats.length === 0 ? (
                     <View style={styles.emptyContainer}>
                         <Ionicons name="chatbubbles-outline" size={64} color="#cbd5e0" />
                         <Text style={styles.emptyTitle}>No chats yet</Text>
                         <Text style={styles.emptyText}>
-                            Join an event and start chatting with other buddies!
+                            Join events or connect with others to start chatting!
                         </Text>
                         <Pressable
                             style={styles.exploreButton}
-                            onPress={() => router.push("/discover")}
+                            onPress={() => router.push("/(tabs)/explore")}
                         >
-                            <Text style={styles.exploreButtonText}>Find Events</Text>
+                            <Text style={styles.exploreButtonText}>Find People</Text>
                         </Pressable>
                     </View>
                 ) : (
@@ -472,11 +471,12 @@ export default function ChatsScreen() {
                             isInitialLoad={isInitialLoad.current}
                         />
                     ))
-                )}
+                )
+                }
 
                 <View style={styles.bottomPadding} />
-            </ScrollView>
-        </View>
+            </ScrollView >
+        </View >
     );
 }
 

@@ -12,6 +12,7 @@ import {
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View
@@ -19,6 +20,7 @@ import {
 import { SafeAreaView } from "react-native-safe-area-context";
 import { uploadImageToCloudinary } from "../lib/cloudinary";
 import { Coordinates, getCurrentLocation } from "../lib/location";
+import { validateEventContent } from "../lib/moderation";
 import { supabase } from "../lib/supabase";
 
 export default function AddEventScreen() {
@@ -27,20 +29,48 @@ export default function AddEventScreen() {
   const [location, setLocation] = useState("");
   const [coordinates, setCoordinates] = useState<Coordinates | null>(null);
 
-  // Enhanced date/time handling
+  // Enhanced date/time handling - Start
   const [eventDate, setEventDate] = useState<Date>(new Date());
   const [eventTime, setEventTime] = useState<Date>(new Date());
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [showTimePicker, setShowTimePicker] = useState(false);
+
+  // End date/time handling
+  const [eventEndDate, setEventEndDate] = useState<Date>(new Date());
+  const [eventEndTime, setEventEndTime] = useState<Date>(() => {
+    const time = new Date();
+    time.setHours(time.getHours() + 2); // Default 2 hours after start
+    return time;
+  });
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [showEndTimePicker, setShowEndTimePicker] = useState(false);
 
   // Cover image
   const [coverImage, setCoverImage] = useState<string | null>(null);
   const [uploadingImage, setUploadingImage] = useState(false);
 
   const [maxAttendees, setMaxAttendees] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
+  const [contributionNeeded, setContributionNeeded] = useState(false);
+  const [contributionDetails, setContributionDetails] = useState("");
   const [focusedField, setFocusedField] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [gettingLocation, setGettingLocation] = useState(false);
+
+  // Available tags
+  const AVAILABLE_TAGS = ["Hangout", "Party", "Outdoor", "Indoor", "Study", "Cafe", "Music", "Sports", "Gaming", "Food", "Chill"];
+
+  const toggleTag = (tag: string) => {
+    if (tags.includes(tag)) {
+      setTags(tags.filter(t => t !== tag));
+    } else {
+      if (tags.length >= 3) {
+        Alert.alert("Limit Reached", "You can select up to 3 tags");
+        return;
+      }
+      setTags([...tags, tag]);
+    }
+  };
 
   const maxDescriptionLength = 500;
 
@@ -76,6 +106,22 @@ export default function AddEventScreen() {
     setShowTimePicker(Platform.OS === 'ios');
     if (selectedTime) {
       setEventTime(selectedTime);
+    }
+  };
+
+  // Handle end date change
+  const onEndDateChange = (event: DateTimePickerEvent, selectedDate?: Date) => {
+    setShowEndDatePicker(Platform.OS === 'ios');
+    if (selectedDate) {
+      setEventEndDate(selectedDate);
+    }
+  };
+
+  // Handle end time change
+  const onEndTimeChange = (event: DateTimePickerEvent, selectedTime?: Date) => {
+    setShowEndTimePicker(Platform.OS === 'ios');
+    if (selectedTime) {
+      setEventEndTime(selectedTime);
     }
   };
 
@@ -137,9 +183,28 @@ export default function AddEventScreen() {
         return;
       }
 
-      // Combine date and time
+      // Content moderation check
+      const moderation = validateEventContent(title, description, location);
+      if (!moderation.valid) {
+        Alert.alert("Content Policy", moderation.message);
+        setLoading(false);
+        return;
+      }
+
+      // Combine start date and time
       const combinedDateTime = new Date(eventDate);
       combinedDateTime.setHours(eventTime.getHours(), eventTime.getMinutes(), 0, 0);
+
+      // Combine end date and time
+      const combinedEndDateTime = new Date(eventEndDate);
+      combinedEndDateTime.setHours(eventEndTime.getHours(), eventEndTime.getMinutes(), 0, 0);
+
+      // Validate end time is after start time
+      if (combinedEndDateTime <= combinedDateTime) {
+        Alert.alert("Error", "End time must be after start time");
+        setLoading(false);
+        return;
+      }
 
       const { data, error } = await supabase
         .from("events")
@@ -150,11 +215,16 @@ export default function AddEventScreen() {
             location: location.trim(),
             time: formatDate(eventDate) + " at " + formatTime(eventTime), // Legacy field
             event_date: combinedDateTime.toISOString(),
+            event_end_date: combinedEndDateTime.toISOString(),
+            status: 'upcoming',
             cover_image_url: coverImage,
             host_id: user.id,
             max_attendees: maxAttendees ? parseInt(maxAttendees) : 10,
             latitude: coordinates?.latitude || null,
             longitude: coordinates?.longitude || null,
+            tags: tags,
+            contribution_needed: contributionNeeded,
+            contribution_details: contributionNeeded ? contributionDetails.trim() : null,
           },
         ])
         .select();
@@ -248,6 +318,7 @@ export default function AddEventScreen() {
                 ]}
                 value={title}
                 onChangeText={setTitle}
+                returnKeyType="next"
                 onFocus={() => setFocusedField("title")}
                 onBlur={() => setFocusedField(null)}
               />
@@ -281,6 +352,37 @@ export default function AddEventScreen() {
                 multiline
                 maxLength={maxDescriptionLength}
               />
+            </View>
+
+            <View style={styles.divider} />
+
+            {/* Tags Section */}
+            <View style={styles.inputGroup}>
+              <View style={styles.labelRow}>
+                <Ionicons name="pricetags" size={16} color="#2f855a" />
+                <Text style={styles.label}>Tags (Max 3)</Text>
+              </View>
+              <View style={styles.tagsContainer}>
+                {AVAILABLE_TAGS.map((tag) => (
+                  <Pressable
+                    key={tag}
+                    onPress={() => toggleTag(tag)}
+                    style={[
+                      styles.tagPill,
+                      tags.includes(tag) && styles.tagPillSelected,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        styles.tagPillText,
+                        tags.includes(tag) && styles.tagPillTextSelected,
+                      ]}
+                    >
+                      {tag} {tags.includes(tag) ? "✓" : "+"}
+                    </Text>
+                  </Pressable>
+                ))}
+              </View>
             </View>
 
             <View style={styles.divider} />
@@ -345,6 +447,66 @@ export default function AddEventScreen() {
               />
             )}
 
+            {/* End Time Section */}
+            <View style={[styles.sectionHeader, { marginTop: 20 }]}>
+              <Ionicons name="calendar" size={18} color="#e53e3e" />
+              <Text style={styles.sectionTitle}>When does it end?</Text>
+            </View>
+
+            {/* End Date Picker */}
+            <View style={styles.dateTimeRow}>
+              <Pressable
+                style={styles.dateTimeCard}
+                onPress={() => setShowEndDatePicker(true)}
+              >
+                <View style={[styles.dateTimeIcon, { backgroundColor: '#fed7d7' }]}>
+                  <Ionicons name="calendar-outline" size={24} color="#e53e3e" />
+                </View>
+                <View style={styles.dateTimeContent}>
+                  <Text style={styles.dateTimeLabel}>End Date</Text>
+                  <Text style={styles.dateTimeValue}>{formatDate(eventEndDate)}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#a0aec0" />
+              </Pressable>
+            </View>
+
+            {/* End Time Picker */}
+            <View style={styles.dateTimeRow}>
+              <Pressable
+                style={styles.dateTimeCard}
+                onPress={() => setShowEndTimePicker(true)}
+              >
+                <View style={[styles.dateTimeIcon, { backgroundColor: '#fed7d7' }]}>
+                  <Ionicons name="time-outline" size={24} color="#e53e3e" />
+                </View>
+                <View style={styles.dateTimeContent}>
+                  <Text style={styles.dateTimeLabel}>End Time</Text>
+                  <Text style={styles.dateTimeValue}>{formatTime(eventEndTime)}</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={20} color="#a0aec0" />
+              </Pressable>
+            </View>
+
+            {/* End Date/Time Picker Modals */}
+            {showEndDatePicker && (
+              <DateTimePicker
+                value={eventEndDate}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={onEndDateChange}
+                minimumDate={eventDate}
+              />
+            )}
+
+            {showEndTimePicker && (
+              <DateTimePicker
+                value={eventEndTime}
+                mode="time"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={onEndTimeChange}
+              />
+            )}
+
             <View style={styles.divider} />
 
             {/* Location */}
@@ -360,7 +522,7 @@ export default function AddEventScreen() {
                 )}
               </View>
               <TextInput
-                placeholder="Nearby area or landmark"
+                placeholder="City, Park, or Landmark (e.g. Central Park)"
                 placeholderTextColor="#a0aec0"
                 style={[
                   styles.input,
@@ -368,6 +530,7 @@ export default function AddEventScreen() {
                 ]}
                 value={location}
                 onChangeText={setLocation}
+                returnKeyType="next"
                 onFocus={() => setFocusedField("location")}
                 onBlur={() => setFocusedField(null)}
               />
@@ -427,9 +590,59 @@ export default function AddEventScreen() {
                   setMaxAttendees(numericText);
                 }}
                 keyboardType="number-pad"
+                returnKeyType="done"
                 onFocus={() => setFocusedField("maxAttendees")}
                 onBlur={() => setFocusedField(null)}
               />
+            </View>
+
+
+
+            <View style={styles.divider} />
+
+            {/* Contribution Section */}
+            <View style={styles.inputGroup}>
+              <Pressable
+                style={{ flexDirection: 'row', alignItems: 'center', paddingVertical: 8 }}
+                onPress={() => setContributionNeeded(!contributionNeeded)}
+              >
+                <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1, gap: 12 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: '#f0fdf4', alignItems: 'center', justifyContent: 'center' }}>
+                    <Ionicons name="wallet" size={18} color="#2f855a" />
+                  </View>
+                  <View>
+                    <Text style={[styles.label, { marginBottom: 2 }]}>Contribution / Entry Fee</Text>
+                    <Text style={{ fontSize: 13, color: '#718096' }}>Does this event cost money?</Text>
+                  </View>
+                </View>
+                <Switch
+                  value={contributionNeeded}
+                  onValueChange={setContributionNeeded}
+                  trackColor={{ false: "#cbd5e0", true: "#2f855a" }}
+                  thumbColor="#fff"
+                />
+              </Pressable>
+
+              {contributionNeeded && (
+                <View style={{ marginTop: 12 }}>
+                  <TextInput
+                    placeholder="e.g. $10 per person, Bring snacks, BYOB"
+                    placeholderTextColor="#a0aec0"
+                    style={[
+                      styles.input,
+                      focusedField === "contribution" && styles.inputFocused,
+                    ]}
+                    value={contributionDetails}
+                    onChangeText={setContributionDetails}
+                    returnKeyType="done"
+                    onFocus={() => setFocusedField("contribution")}
+                    onBlur={() => setFocusedField(null)}
+                  />
+                  <Text style={styles.helperText}>
+                    Specify what attendees need to bring or pay.
+                  </Text>
+                </View>
+              )}
             </View>
 
             {/* Submit Button */}
@@ -459,7 +672,7 @@ export default function AddEventScreen() {
           </View>
         </ScrollView>
       </KeyboardAvoidingView>
-    </SafeAreaView>
+    </SafeAreaView >
   );
 }
 
@@ -687,13 +900,52 @@ const styles = StyleSheet.create({
     backgroundColor: "#e6fffa",
     paddingHorizontal: 8,
     paddingVertical: 3,
-    borderRadius: 10,
-    gap: 3,
+    borderRadius: 6,
+    gap: 4,
+    marginLeft: 8,
   },
   gpsBadgeText: {
-    fontSize: 11,
-    fontWeight: "600",
+    fontSize: 10,
+    fontWeight: "700",
     color: "#2f855a",
+  },
+  tagsContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+    paddingVertical: 4,
+  },
+  tagPill: {
+    paddingHorizontal: 14,
+    paddingVertical: 8,
+    borderRadius: 20,
+    backgroundColor: "#fff",
+    borderWidth: 1,
+    borderColor: "#e2e8f0",
+  },
+  tagPillSelected: {
+    backgroundColor: "#f0fdf4",
+    borderColor: "#2f855a",
+  },
+  tagPillText: {
+    fontSize: 13,
+    color: "#718096",
+    fontWeight: "600",
+  },
+  tagPillTextSelected: {
+    color: "#2f855a",
+    fontWeight: "700",
+  },
+  rowBetween: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
+  helperText: {
+    fontSize: 12,
+    color: "#718096",
+    marginTop: 6,
+    marginLeft: 4,
   },
   gpsButton: {
     flexDirection: "row",

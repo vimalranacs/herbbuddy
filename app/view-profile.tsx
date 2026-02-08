@@ -64,6 +64,9 @@ interface ProfileData {
     vibe: string[];
     group_comfort: string;
     photos: string[];
+    vibe_score?: number;
+    trust_score?: number;
+    total_ratings?: number;
 }
 
 type ChatRequestStatus = 'none' | 'pending' | 'accepted' | 'rejected';
@@ -136,6 +139,9 @@ export default function ViewProfileScreen() {
                     vibe: data.vibe || [],
                     group_comfort: data.group_comfort || "",
                     photos: data.photos || [],
+                    vibe_score: data.vibe_score || 0,
+                    trust_score: data.trust_score || 0,
+                    total_ratings: data.total_ratings || 0,
                 });
 
                 // Check for existing chat request if profile is female
@@ -232,6 +238,42 @@ export default function ViewProfileScreen() {
         }
     };
 
+    const handleCancelChatRequest = async () => {
+        if (!profile || !currentUserId) return;
+
+        Alert.alert(
+            "Cancel Request",
+            `Cancel your chat request to ${profile.full_name}?`,
+            [
+                { text: "No", style: "cancel" },
+                {
+                    text: "Yes, Cancel",
+                    style: "destructive",
+                    onPress: async () => {
+                        setSendingRequest(true);
+                        try {
+                            const { error } = await supabase
+                                .from("chat_requests")
+                                .delete()
+                                .eq("sender_id", currentUserId)
+                                .eq("receiver_id", profile.id);
+
+                            if (error) throw error;
+
+                            setChatRequestStatus('none');
+                            Alert.alert("Cancelled", "Your chat request has been cancelled.");
+                        } catch (error) {
+                            console.error("Error cancelling request:", error);
+                            Alert.alert("Error", "Failed to cancel request.");
+                        } finally {
+                            setSendingRequest(false);
+                        }
+                    }
+                }
+            ]
+        );
+    };
+
     const handleSubmitReport = async () => {
         if (!profile || !currentUserId || !selectedReportReason) return;
 
@@ -276,10 +318,21 @@ export default function ViewProfileScreen() {
         if (needsChatRequest) {
             if (chatRequestStatus === 'pending') {
                 return (
-                    <View style={styles.pendingButton}>
-                        <Ionicons name="time-outline" size={18} color="#f59e0b" />
-                        <Text style={styles.pendingText}>Request Pending</Text>
-                    </View>
+                    <Pressable
+                        style={styles.pendingButton}
+                        onPress={handleCancelChatRequest}
+                        disabled={sendingRequest}
+                    >
+                        {sendingRequest ? (
+                            <ActivityIndicator size="small" color="#f59e0b" />
+                        ) : (
+                            <>
+                                <Ionicons name="time-outline" size={18} color="#f59e0b" />
+                                <Text style={styles.pendingText}>Request Pending</Text>
+                                <Text style={styles.cancelHint}>(Tap to cancel)</Text>
+                            </>
+                        )}
+                    </Pressable>
                 );
             }
 
@@ -379,6 +432,31 @@ export default function ViewProfileScreen() {
                         📍 {profile.city} • {profile.age} years
                     </Text>
                     {profile.gender && <Text style={styles.gender}>{profile.gender}</Text>}
+
+                    {/* Score Badges */}
+                    {(profile.vibe_score !== undefined && profile.vibe_score > 0) || (profile.trust_score !== undefined && profile.trust_score > 0) ? (
+                        <View style={styles.scoreBadges}>
+                            {profile.vibe_score !== undefined && profile.vibe_score > 0 && (
+                                <View style={styles.scoreBadge}>
+                                    <Text style={styles.scoreEmoji}>⚡</Text>
+                                    <Text style={styles.scoreValue}>{profile.vibe_score.toFixed(1)}</Text>
+                                    <Text style={styles.scoreLabel}>Vibe</Text>
+                                </View>
+                            )}
+                            {profile.trust_score !== undefined && profile.trust_score > 0 && (
+                                <View style={[styles.scoreBadge, styles.trustBadge]}>
+                                    <Text style={styles.scoreEmoji}>🛡️</Text>
+                                    <Text style={styles.scoreValue}>{profile.trust_score.toFixed(1)}</Text>
+                                    <Text style={styles.scoreLabel}>Trust</Text>
+                                </View>
+                            )}
+                            {profile.total_ratings !== undefined && profile.total_ratings > 0 && (
+                                <Text style={styles.ratingsCount}>
+                                    ({profile.total_ratings} rating{profile.total_ratings !== 1 ? 's' : ''})
+                                </Text>
+                            )}
+                        </View>
+                    ) : null}
 
                     {/* Chat Button */}
                     {renderChatButton()}
@@ -720,6 +798,11 @@ const styles = StyleSheet.create({
         fontSize: 16,
         fontWeight: "600",
     },
+    cancelHint: {
+        color: "#b45309",
+        fontSize: 11,
+        marginLeft: 4,
+    },
     rejectedButton: {
         flexDirection: "row",
         alignItems: "center",
@@ -838,5 +921,42 @@ const styles = StyleSheet.create({
         color: "#fff",
         fontSize: 16,
         fontWeight: "700",
+    },
+    // Score Badge Styles
+    scoreBadges: {
+        flexDirection: "row",
+        alignItems: "center",
+        marginTop: 16,
+        gap: 12,
+    },
+    scoreBadge: {
+        flexDirection: "row",
+        alignItems: "center",
+        backgroundColor: "#fef3c7",
+        paddingHorizontal: 14,
+        paddingVertical: 8,
+        borderRadius: 20,
+        gap: 6,
+    },
+    trustBadge: {
+        backgroundColor: "#d1fae5",
+    },
+    scoreEmoji: {
+        fontSize: 16,
+    },
+    scoreValue: {
+        fontSize: 18,
+        fontWeight: "bold",
+        color: "#1a202c",
+    },
+    scoreLabel: {
+        fontSize: 12,
+        color: "#718096",
+        fontWeight: "500",
+    },
+    ratingsCount: {
+        fontSize: 13,
+        color: "#a0aec0",
+        marginLeft: 4,
     },
 });

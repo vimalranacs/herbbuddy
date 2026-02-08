@@ -3,7 +3,10 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
+import ForceUpdateScreen from '@/components/ForceUpdateScreen';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { checkAppVersion, VersionCheckResult } from '@/lib/version';
+import { useEffect, useState } from 'react';
 
 export const unstable_settings = {
   anchor: '(tabs)',
@@ -11,6 +14,22 @@ export const unstable_settings = {
 
 export default function RootLayout() {
   const colorScheme = useColorScheme();
+  const [updateInfo, setUpdateInfo] = useState<VersionCheckResult | null>(null);
+
+  useEffect(() => {
+    checkVersion();
+  }, []);
+
+  const checkVersion = async () => {
+    const result = await checkAppVersion();
+    if (result.isNeeded && result.isForceUpdate) {
+      setUpdateInfo(result);
+    }
+  };
+
+  if (updateInfo?.isForceUpdate) {
+    return <ForceUpdateScreen message={updateInfo.message} updateUrl={updateInfo.storeUrl} />;
+  }
 
   return (
     <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>

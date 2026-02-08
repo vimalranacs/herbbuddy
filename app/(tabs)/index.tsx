@@ -19,6 +19,8 @@ interface Event {
   time: string;
   description: string;
   max_attendees: number;
+  tags?: string[];
+  contribution_needed?: boolean;
 }
 
 export default function HomeScreen() {
@@ -110,6 +112,28 @@ export default function HomeScreen() {
               <Text style={styles.cardTitle}>{event.title}</Text>
               <Text style={styles.cardSubtitle}>📍 {event.location}</Text>
               <Text style={styles.cardTime}>🕐 {event.time}</Text>
+
+              {/* Tags Row */}
+              {event.tags && event.tags.length > 0 && (
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+                  {event.tags.slice(0, 3).map(tag => (
+                    <View key={tag} style={{ backgroundColor: '#f0fdf4', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8, borderWidth: 1, borderColor: '#bbf7d0' }}>
+                      <Text style={{ fontSize: 10, color: '#15803d', fontWeight: '600' }}>{tag}</Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Contribution Badge */}
+              {event.contribution_needed && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 4 }}>
+                  <Ionicons name="wallet-outline" size={12} color="#d97706" />
+                  <Text style={{ fontSize: 11, color: "#b45309", fontWeight: "600" }}>
+                    Contribution Needed
+                  </Text>
+                </View>
+              )}
+
               <Pressable
                 style={styles.cardButton}
                 onPress={() =>

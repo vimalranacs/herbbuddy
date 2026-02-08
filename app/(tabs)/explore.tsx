@@ -2,7 +2,6 @@ import { Ionicons } from "@expo/vector-icons";
 import { router } from "expo-router";
 import { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
   Pressable,
   RefreshControl,
   ScrollView,
@@ -11,6 +10,8 @@ import {
   TextInput,
   View
 } from "react-native";
+import { SkeletonCard } from "../../components/SkeletonLoader";
+import { getCachedEvents, setCachedEvents } from "../../lib/cache";
 import { calculateDistance, Coordinates, formatDistance, getCurrentLocation } from "../../lib/location";
 import { supabase } from "../../lib/supabase";
 
@@ -26,16 +27,33 @@ interface Event {
   latitude?: number;
   longitude?: number;
   distance?: number; // Calculated client-side
+  tags?: string[];
+  contribution_needed?: boolean;
+  contribution_details?: string;
+  created_at?: string;
 }
 
 const CATEGORIES = [
   { id: "all", label: "All", emoji: "✨" },
-  { id: "hangout", label: "Hangout", emoji: "🌙" },
-  { id: "outdoor", label: "Outdoor", emoji: "🌿" },
-  { id: "cafe", label: "Cafe", emoji: "☕" },
-  { id: "indoor", label: "Indoor", emoji: "🏠" },
-  { id: "party", label: "Party", emoji: "🎉" },
+  { id: "Hangout", label: "Hangout", emoji: "🌙" },
+  { id: "Party", label: "Party", emoji: "🎉" },
+  { id: "Outdoor", label: "Outdoor", emoji: "🌿" },
+  { id: "Indoor", label: "Indoor", emoji: "🏠" },
+  { id: "Study", label: "Study", emoji: "📚" },
+  { id: "Cafe", label: "Cafe", emoji: "☕" },
+  { id: "Music", label: "Music", emoji: "🎵" },
+  { id: "Sports", label: "Sports", emoji: "⚽" },
+  { id: "Gaming", label: "Gaming", emoji: "🎮" },
+  { id: "Food", label: "Food", emoji: "🍔" },
+  { id: "Chill", label: "Chill", emoji: "🧊" },
 ];
+
+const isNewEvent = (dateString?: string) => {
+  if (!dateString) return false;
+  const date = new Date(dateString);
+  const now = new Date();
+  return (now.getTime() - date.getTime()) < 24 * 60 * 60 * 1000;
+};
 
 export default function ExploreScreen() {
   const [selectedCategory, setSelectedCategory] = useState("all");
@@ -60,7 +78,27 @@ export default function ExploreScreen() {
     }
   };
 
-  const fetchEvents = async () => {
+  const fetchEvents = async (useCache = true) => {
+    try {
+      // Try to use cache first
+      if (useCache) {
+        const cachedEvents = await getCachedEvents();
+        if (cachedEvents && cachedEvents.length > 0) {
+          setEvents(cachedEvents);
+          setLoading(false);
+          // Still fetch fresh data in background
+          fetchFreshEvents();
+          return;
+        }
+      }
+      await fetchFreshEvents();
+    } catch (error) {
+      console.error("Error:", error);
+      setLoading(false);
+    }
+  };
+
+  const fetchFreshEvents = async () => {
     try {
       const { data, error } = await supabase
         .from("events")
@@ -73,8 +111,10 @@ export default function ExploreScreen() {
       }
 
       setEvents(data || []);
-    } catch (error) {
-      console.error("Error:", error);
+      // Cache the events
+      if (data && data.length > 0) {
+        await setCachedEvents(data);
+      }
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -83,7 +123,7 @@ export default function ExploreScreen() {
 
   const onRefresh = () => {
     setRefreshing(true);
-    fetchEvents();
+    fetchEvents(false); // Skip cache on refresh
   };
 
   // Filter events by category and search query, calculate distances
@@ -102,10 +142,15 @@ export default function ExploreScreen() {
       return { ...event, distance };
     })
     .filter((event) => {
+      // Filter by tags if a specific category is selected
       const matchesCategory = selectedCategory === "all" ||
-        `${event.title} ${event.description || ""}`.toLowerCase().includes(selectedCategory.toLowerCase());
+        (event.tags && event.tags.includes(selectedCategory)) ||
+        // Fallback for older events without tags: match text
+        (!event.tags && `${event.title} ${event.description || ""}`.toLowerCase().includes(selectedCategory.toLowerCase()));
+
       const matchesSearch = searchQuery.trim() === "" ||
-        `${event.title} ${event.description || ""} ${event.location}`.toLowerCase().includes(searchQuery.toLowerCase());
+        `${event.title} ${event.description || ""} ${event.location} ${event.tags?.join(" ") || ""}`.toLowerCase().includes(searchQuery.toLowerCase());
+
       return matchesCategory && matchesSearch;
     })
     .sort((a, b) => {
@@ -226,18 +271,24 @@ export default function ExploreScreen() {
       >
         {loading ? (
           <View style={styles.loadingContainer}>
-            <ActivityIndicator size="large" color="#2f855a" />
-            <Text style={styles.loadingText}>Loading events...</Text>
+            <SkeletonCard />
+            <SkeletonCard />
+            <SkeletonCard />
           </View>
         ) : filteredEvents.length === 0 ? (
           <View style={styles.emptyState}>
-            <Text style={styles.emptyEmoji}>🔍</Text>
-            <Text style={styles.emptyTitle}>No events found</Text>
-            <Text style={styles.emptyText}>
-              {events.length === 0
-                ? "Be the first to create an event!"
-                : "Try a different category"}
+            <Ionicons name="search-outline" size={64} color="#e2e8f0" />
+            <Text style={styles.emptyText}>No events found</Text>
+            <Text style={styles.emptySubtext}>
+              Try adjusting your search or category filters, or be the first to create one!
             </Text>
+            <Pressable
+              style={styles.createEventEmptyButton}
+              onPress={() => router.push('/add-event')}
+            >
+              <Ionicons name="add-circle-outline" size={20} color="#fff" />
+              <Text style={styles.createEventEmptyText}>Create Event</Text>
+            </Pressable>
           </View>
         ) : (
           filteredEvents.map((event, index) => {
@@ -268,7 +319,33 @@ export default function ExploreScreen() {
                         </Text>
                       </View>
                     )}
+                    {isNewEvent(event.created_at) && (
+                      <View style={styles.newBadge}>
+                        <Text style={styles.newBadgeText}>NEW</Text>
+                      </View>
+                    )}
                   </View>
+
+                  {/* Tags Row */}
+                  {event.tags && event.tags.length > 0 && (
+                    <View style={styles.tagsRow}>
+                      {event.tags.slice(0, 3).map(tag => (
+                        <View key={tag} style={styles.tagBadge}>
+                          <Text style={styles.tagBadgeText}>{tag}</Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
+                  {/* Contribution Badge */}
+                  {event.contribution_needed && (
+                    <View style={styles.contributionBadge}>
+                      <Ionicons name="wallet-outline" size={12} color="#d97706" />
+                      <Text style={styles.contributionText} numberOfLines={1}>
+                        {event.contribution_details || "Contribution Needed"}
+                      </Text>
+                    </View>
+                  )}
 
                   <View style={styles.eventDetails}>
                     <View style={styles.eventDetailRow}>
@@ -562,20 +639,82 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 60,
   },
-  emptyEmoji: {
-    fontSize: 48,
-    marginBottom: 16,
-  },
-  emptyTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#1a202c",
-    marginBottom: 8,
-  },
   emptyText: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#2d3748",
+    marginTop: 16,
+  },
+  emptySubtext: {
     fontSize: 14,
     color: "#718096",
+    marginTop: 8,
+    width: "70%",
     textAlign: "center",
+    marginBottom: 20,
+  },
+  createEventEmptyButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#2f855a",
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 24,
+    gap: 8,
+  },
+  createEventEmptyText: {
+    color: "#fff",
+    fontSize: 15,
+    fontWeight: "bold",
+  },
+  newBadge: {
+    backgroundColor: "#ff4757",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    marginLeft: 8,
+  },
+  newBadgeText: {
+    color: "#fff",
+    fontSize: 10,
+    fontWeight: "bold",
+  },
+  tagsRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
+    marginBottom: 8,
+  },
+  tagBadge: {
+    backgroundColor: "#f0fdf4",
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#bbf7d0",
+  },
+  tagBadgeText: {
+    fontSize: 10,
+    color: "#15803d",
+    fontWeight: "600",
+  },
+  contributionBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#fffbeb",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#fcd34d",
+    marginBottom: 8,
+    alignSelf: "flex-start",
+    gap: 4,
+  },
+  contributionText: {
+    fontSize: 11,
+    color: "#b45309",
+    fontWeight: "600",
   },
   bottomPadding: {
     height: 100,

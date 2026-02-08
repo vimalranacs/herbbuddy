@@ -3,6 +3,7 @@ import { router, useLocalSearchParams } from "expo-router";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
     ActivityIndicator,
+    Alert,
     Animated,
     FlatList,
     KeyboardAvoidingView,
@@ -221,6 +222,44 @@ export default function ChatScreen() {
             }
             // If we have a recipientId but no chatId, find or create chat
             else if (recipientId) {
+                // SECURITY CHECK: If recipient is female, ensure we have permission
+                const { data: recipientProfile } = await supabase
+                    .from("profiles")
+                    .select("gender")
+                    .eq("id", recipientId)
+                    .single();
+
+                const isRecipientFemale = recipientProfile?.gender?.toLowerCase() === 'female' || recipientProfile?.gender?.toLowerCase() === 'woman';
+
+                if (isRecipientFemale) {
+                    // Check if chat already exists
+                    const { data: existingChat } = await supabase
+                        .from("chats")
+                        .select("id")
+                        .or(`and(participant_1.eq.${userId},participant_2.eq.${recipientId}),and(participant_1.eq.${recipientId},participant_2.eq.${userId})`)
+                        .single();
+
+                    if (!existingChat) {
+                        // Check if there is an ACCEPTED request
+                        const { data: request } = await supabase
+                            .from("chat_requests")
+                            .select("status")
+                            .eq("sender_id", userId)
+                            .eq("receiver_id", recipientId)
+                            .single();
+
+                        // If no accepted request, redirect to profile
+                        if (request?.status !== 'accepted') {
+                            Alert.alert(
+                                "Request Required",
+                                "You need to send a chat request first.",
+                                [{ text: "Go to Profile", onPress: () => router.replace(`/view-profile?userId=${recipientId}`) }]
+                            );
+                            return;
+                        }
+                    }
+                }
+
                 const existingChatId = await findOrCreateChat(userId, recipientId, eventId);
                 if (existingChatId) {
                     setActiveChatId(existingChatId);

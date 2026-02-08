@@ -1,98 +1,60 @@
-# 🌿 HerbBuddy
+# 🌿 HerbBuddy - Social Event & Community App
 
-HerbBuddy is a community-driven event and social connection app focused on trust, vibes, and meaningful interactions.  
-Users can discover events, join plans, chat with participants, and build a reputation through vibe and trust ratings.
+> **Connect. Plan. Vibe.**  
+> HerbBuddy is a modern social platform designed to help people find events, meet like-minded individuals, and build real-world connections.
 
----
+![HerbBuddy Banner](https://via.placeholder.com/1200x600?text=HerbBuddy+App+Showcase)
 
-## 🚀 Tech Stack
+## 🚀 Overview
+HerbBuddy is built to solve the problem of *loneliness in the digital age*. It allows users to:
+-   **Discover Events**: Find local gatherings, parties, and workshops.
+-   **Host Plans**: Create your own events with customized tags and contribution details.
+-   **Safety First**: Mandatory profile completion and "Chat Request" system for women to ensure a safe environment.
+-   **Real-time Chat**: Connect with participants before and after events.
+-   **Rating System**: Build trust by rating participants after events conclude.
 
-### Frontend
-- Expo (React Native)
-- Expo Router
-- TypeScript
-- React Native Maps
-- Socket-ready architecture
+## ✨ Key Features
+-   **📅 Event Lifecycle**: Full support for Upcoming, Ongoing, and Completed events.
+-   **⭐ User Ratings**: Rate fellow attendees to build a trusted community score.
+-   **🛡️ Safety & Privacy**: "Request to Chat" feature prevents unsolicited messages.
+-   **📍 GPS Location**: (Optional) Verify event locations with precise coordinates.
+-   **🎨 Guest Mode**: Explore the app without an account before committing.
 
-### Backend (In Progress)
-- Node.js
-- Express.js
-- Railway.app (hosting)
-- Socket.io (real-time)
-- node-cron (background jobs)
+## 🛠️ Tech Stack
+-   **Frontend**: React Native (Expo Router)
+-   **Backend**: Supabase (PostgreSQL, Auth, Real-time)
+-   **Styling**: Custom Design System (No heavy UI libraries)
+-   **Navigation**: Expo Router (File-based routing)
 
-### Authentication & Database
-- Supabase Auth (Email, OTP, OAuth)
-- Supabase PostgreSQL (single source of truth)
-
----
-
-## 🧠 Core Features
-
-- 🔐 Secure authentication (Supabase)
-- 📍 Event creation & discovery
-- 🗓️ Events with start & end time
-- 💬 Real-time chat between participants
-- ⭐ Vibe & Trust rating system after events
-- 🛡️ Content moderation (illegal / drug / sexual content blocking)
-- ⚡ Smooth loading animations (skeletons & blur effects)
-
----
-
-## 🧩 Architecture Overview
-
-- Mobile app communicates **only** with backend APIs
-- Backend (Railway) acts as middleware and gatekeeper
-- Supabase is used for:
-  - Authentication
-  - PostgreSQL database
-- No direct database calls from the client
+## 📱 Installation
+1.  **Clone the repository**:
+    ```bash
+    git clone https://github.com/StartLord09/herb-buddy.git
+    cd herb-buddy
+    ```
+2.  **Install dependencies**:
+    ```bash
+    npm install
+    ```
+3.  **Start the app**:
+    ```bash
+    npx expo start
+    ```
 
 ---
 
-## 🛠️ Project Structure
+## 👤 About the Developer
 
-```
-herbbuddy/
-├── app/                 # Expo app (frontend)
-├── backend/             # Express backend (Railway)
-│   ├── src/
-│   ├── package.json
-│   └── tsconfig.json
-├── components/
-├── lib/
-└── README.md
-```
+**Name:** Vimal Rana  
+**Role:** Student Developer | B.Tech (CSE)  
+**College:** ABES Engineering College (ABES EC), Ghaziabad, Uttar Pradesh
 
----
+**Contact Details:**
+*   📧 **Email**: [vimalrana877@gmail.com](mailto:vimalrana877@gmail.com)
+*   📞 **Phone**: +91 6387158405
+*   📸 **Instagram**: [_vimal_rana_](https://instagram.com/_vimal_rana_)
 
-## 🧪 Development Status
+**About Me:**
+I am a Computer Science Engineering student passionate about building real-world applications using modern technologies. I enjoy working on product ideas that focus on usability, trust, and social impact. HerbBuddy is part of my learning journey to understand full-stack app development, system design, and user experience.
 
-- Frontend: Actively developing
-- Backend: Being migrated to Railway
-- Realtime chat: Planned via Socket.io
-- Ratings system: Planned
-
----
-
-## 📌 Environment Variables (Backend)
-
-These are set in Railway, **not committed to GitHub**:
-
-- `DATABASE_URL`
-- `SUPABASE_JWT_SECRET`
-- `PORT=3000`
-
----
-
-## 👤 Author
-
-Built with ❤️ by **Vimal Rana**  
-B.Tech CSE | App Developer | Builder
-
----
-
-## ⚠️ Note
-
-This project is under active development.  
-Breaking changes may occur as architecture evolves.
+> *This project is actively developed and maintained as a learning-focused, real-world application.*
